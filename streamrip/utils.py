@@ -146,6 +146,9 @@ def clean_format(formatter: str, format_info, restrict: bool = False):
     :type formatter: str
     :param kwargs:
     """
+    if ("album" in format_info):
+        formatter = formatter.replace("title", "album")
+
     fmt_keys = filter(None, (i[1] for i in Formatter().parse(formatter)))
     # fmt_keys = (i[1] for i in Formatter().parse(formatter) if i[1] is not None)
 

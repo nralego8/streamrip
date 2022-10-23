@@ -13,6 +13,7 @@ from typing import (
     Any,
     Dict,
     Generator,
+    ItemsView,
     Iterable,
     List,
     Optional,
@@ -22,10 +23,12 @@ from typing import (
 )
 
 from click import echo, secho, style
+import m3u8
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, ID3NoHeaderError
 from mutagen.mp4 import MP4, MP4Cover
 from pathvalidate import sanitize_filepath
+from tomlkit import item
 
 from . import converter
 from .clients import Client, DeezloaderClient
@@ -381,7 +384,10 @@ class Track(Media):
             self.path = out_path
 
         if not kwargs.get("stay_temp", False):
-            self.move(self.final_path)
+            try:
+                self.move(self.final_path)
+            except:
+                return
 
         logger.debug("Downloaded: %s -> %s", self.path, self.final_path)
 
@@ -1842,6 +1848,7 @@ class Playlist(Tracklist, Media):
             for track in tracklist:
                 self.append(Track(self.client, id=track["id"]))
         else:
+            ids = []
             for track in tracklist:
                 # TODO: This should be managed with .m3u files and alike. Arbitrary
                 # tracknumber tags might cause conflicts if the playlist files are
@@ -1851,15 +1858,17 @@ class Playlist(Tracklist, Media):
                     kwargs.get("embed_cover_size", "large")
                 ]
 
-                self.append(
-                    Track(
-                        self.client,
-                        id=track.get("id"),
-                        meta=meta,
-                        cover_url=cover_url,
-                        part_of_tracklist=True,
+                if (track.get("id") not in ids):
+                    ids.append(track.get("id"))
+                    self.append(
+                        Track(
+                            self.client,
+                            id=track.get("id"),
+                            meta=meta,
+                            cover_url=cover_url,
+                            part_of_tracklist=True,
+                        )
                     )
-                )
 
         logger.debug("Loaded %d tracks from playlist %s", len(self), self.name)
 
@@ -1870,15 +1879,62 @@ class Playlist(Tracklist, Media):
         else:
             self.folder = parent_folder
 
+        self.parent_folder = parent_folder
+
         # Used for safe concurrency with tracknumbers instead of an object
         # level that stores an index
         self.__indices = iter(range(1, len(self) + 1))
         self.download_message()
 
+        self.init_m3u8()
+        self.file_format = kwargs.get("track_format", TRACK_FORMAT)
+
+    def init_m3u8(self):
+        data = ""
+        self.m3u_name = self.parent_folder + "/" + self.title + ".m3u8"
+        if os.path.isfile(self.m3u_name):
+            #open text file in read mode
+            text_file = open(self.m3u_name, "r")
+        
+            #read whole file to a string
+            data = text_file.read()
+        
+            #close file
+            text_file.close()
+        
+        self.m3u8_obj = m3u8.loads(data)
+
+    def add_m3u8(self, track, track_title):
+        for segment in self.m3u8_obj.segments:
+            if track in segment.uri:
+                return
+
+        segment = m3u8.Segment(track, duration=-1, title=track_title)
+        self.m3u8_obj.add_segment(segment)
+        self.m3u8_obj.dump(self.m3u_name)
+
     def _download_item(self, item: Media, **kwargs):
         assert isinstance(item, Track)
 
-        kwargs["parent_folder"] = self.folder
+        sub_path = clean_format(
+            kwargs.get("folder_format", FOLDER_FORMAT),
+            item.meta.get_album_formatter(item.meta.quality),
+            restrict=kwargs.get("restrict_filenames", False),
+        )
+
+        formatter = item.meta.get_formatter(max_quality=item.meta.quality)
+
+        filename = clean_format(self.file_format, formatter, restrict=True)
+        final_path = os.path.join(self.folder, filename)[:250].strip() + ext(
+            item.meta.quality, self.client.source
+        )
+
+        kwargs["parent_folder"] = os.path.join(
+            self.parent_folder,
+            sub_path
+        )
+        kwargs["playlist_mode"] = True
+
         if self.client.source == "soundcloud":
             item.load_meta()
 
@@ -1897,6 +1953,7 @@ class Playlist(Tracklist, Media):
             exclude_tags=kwargs.get("exclude_tags"),
         )
 
+        self.add_m3u8(final_path, item.meta.title)
         self.downloaded_ids.add(item.id)
 
     @staticmethod
@@ -2049,13 +2106,9 @@ class Artist(Tracklist, Media):
         :param kwargs:
         :rtype: Iterable
         """
-        if kwargs.get("folder_format"):
-            folder = clean_filename(self.name, kwargs.get("restrict_filenames", False))
-            self.folder = os.path.join(parent_folder, folder)
-        else:
-            self.folder = parent_folder
+        self.folder = parent_folder
 
-        logger.debug("Artist folder: %s", folder)
+        logger.debug("Artist folder: %s", parent_folder)
         logger.debug("Length of tracklist %d", len(self))
         logger.debug("Filters: %s", filters)
 

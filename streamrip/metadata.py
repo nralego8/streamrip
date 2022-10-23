@@ -461,6 +461,7 @@ class TrackMetadata:
         :rtype: dict
         """
         formatter = {k: self.get(k) for k in ALBUM_KEYS}
+        formatter["album"] = self.album
         formatter["container"] = "FLAC" if max_quality >= 2 else "MP3"
         formatter["sampling_rate"] /= 1000
         return formatter
