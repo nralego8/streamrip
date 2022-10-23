@@ -27,7 +27,7 @@ import m3u8
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, ID3NoHeaderError
 from mutagen.mp4 import MP4, MP4Cover
-from pathvalidate import sanitize_filepath
+from pathvalidate import sanitize_filename, sanitize_filepath
 from tomlkit import item
 
 from . import converter
@@ -1891,7 +1891,7 @@ class Playlist(Tracklist, Media):
 
     def init_m3u8(self):
         data = ""
-        self.m3u_name = self.parent_folder + "/" + self.title + ".m3u8"
+        self.m3u_name = self.parent_folder + "/" + sanitize_filename(self.title + ".m3u8")
         if os.path.isfile(self.m3u_name):
             #open text file in read mode
             text_file = open(self.m3u_name, "r")
@@ -1908,7 +1908,7 @@ class Playlist(Tracklist, Media):
         for segment in self.m3u8_obj.segments:
             if track in segment.uri:
                 return
-
+            
         segment = m3u8.Segment(track, duration=-1, title=track_title)
         self.m3u8_obj.add_segment(segment)
         self.m3u8_obj.dump(self.m3u_name)
