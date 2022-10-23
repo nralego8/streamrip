@@ -1925,7 +1925,7 @@ class Playlist(Tracklist, Media):
         formatter = item.meta.get_formatter(max_quality=item.meta.quality)
 
         filename = clean_format(self.file_format, formatter, restrict=True)
-        final_path = os.path.join(self.folder, filename)[:250].strip() + ext(
+        final_path = os.path.join(sub_path, filename)[:250].strip() + ext(
             item.meta.quality, self.client.source
         )
 
@@ -1946,7 +1946,12 @@ class Playlist(Tracklist, Media):
             item.meta.tracknumber = next(self.__indices)
             item.meta.discnumber = 1
 
-        item.download(**kwargs)
+        try:
+            item.download(**kwargs)
+        except ItemExists as e:
+            self.add_m3u8(final_path, item.meta.title)
+            return
+
 
         item.tag(
             embed_cover=kwargs.get("embed_cover", True),
