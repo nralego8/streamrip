@@ -284,13 +284,16 @@ class Track(Media):
         """
         if not self.part_of_tracklist and not self.client.source == "soundcloud":
             secho(f"Downloading {self!s}\n", bold=True)
-
-        self._prepare_download(
-            quality=quality,
-            parent_folder=parent_folder,
-            progress_bar=progress_bar,
-            **kwargs,
-        )
+        
+        try:
+            self._prepare_download(
+                quality=quality,
+                parent_folder=parent_folder,
+                progress_bar=progress_bar,
+                **kwargs,
+            )
+        except ItemExists as e:
+            return
 
         if self.client.source == "soundcloud":
             # soundcloud client needs whole dict to get file url
