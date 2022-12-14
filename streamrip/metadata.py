@@ -268,6 +268,7 @@ class TrackMetadata:
             self.tracknumber = track.get("track_number", 1)
             self.discnumber = track.get("media_number", 1)
             self.artist = safe_get(track, "performer", "name")
+            self.duration = track.get("duration", -1)
 
         elif self.__source == "tidal":
             self.title = track["title"].strip()
@@ -283,6 +284,7 @@ class TrackMetadata:
             self.tracknumber = track.get("track_position", 1)
             self.discnumber = track.get("disk_number", 1)
             self.artist = safe_get(track, "artist", "name")
+            self.duration = track.get("duration", -1)
 
         elif self.__source == "soundcloud":
             self.title = track["title"].strip()

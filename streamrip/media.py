@@ -1,6 +1,7 @@
 """Bases that handle parsing and downloading media. """
 
 import abc
+import codecs
 import concurrent.futures
 import hashlib
 import logging
@@ -1927,14 +1928,15 @@ class Playlist(Tracklist, Media):
         
         self.m3u8_obj = m3u8.loads(data)
 
-    def add_m3u8(self, track, track_title):
+    def add_m3u8(self, track, meta):
         for segment in self.m3u8_obj.segments:
             if track in segment.uri:
                 return
-            
-        segment = m3u8.Segment(track, duration=-1, title=track_title)
+        
+        segment = m3u8.Segment(track, duration=meta.duration, title=meta.title.replace(",", ""))
         self.m3u8_obj.add_segment(segment)
-        self.m3u8_obj.dump(self.m3u_name)
+        with codecs.open(self.m3u_name, "w", "utf-8") as out_file:
+            out_file.write(self.m3u8_obj.dumps())
 
     def _download_item(self, item: Media, **kwargs):
         assert isinstance(item, Track)
@@ -1947,8 +1949,8 @@ class Playlist(Tracklist, Media):
 
         formatter = item.meta.get_formatter(max_quality=item.meta.quality)
 
-        filename = clean_format(self.file_format, formatter, restrict=True)
-        final_path = os.path.join(sub_path, filename)[:250].strip() + ext(
+        filename = clean_format(self.file_format, formatter, restrict=kwargs.get("restrict_filenames", False))
+        final_path = sub_path + "/" + filename[:250].strip() + ext(
             item.meta.quality, self.client.source
         )
 
@@ -1972,7 +1974,7 @@ class Playlist(Tracklist, Media):
         try:
             item.download(**kwargs)
         except ItemExists as e:
-            self.add_m3u8(final_path, item.meta.title)
+            self.add_m3u8(final_path, item.meta)
             return
 
 
@@ -1981,7 +1983,7 @@ class Playlist(Tracklist, Media):
             exclude_tags=kwargs.get("exclude_tags"),
         )
 
-        self.add_m3u8(final_path, item.meta.title)
+        self.add_m3u8(final_path, item.meta)
         self.downloaded_ids.add(item.id)
 
     @staticmethod
