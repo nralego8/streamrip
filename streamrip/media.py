@@ -676,6 +676,29 @@ class Track(Media):
                 else None
             )
 
+        # nralego8's extended tags
+
+        # id tag (og client id)
+        id_tag = self.client.source.capitalize() + "id"
+        audio[id_tag] = str(self.id)
+
+        if (self.client.source == "qobuz"):
+            # explicit tag
+            audio["Explicit"] = str(self.meta.explicit)
+
+            # version
+            if (hasattr(self.meta, "version")):
+                audio["Version"] = str(self.meta.version)
+            else:
+                audio["Version"] = ""
+
+            if (hasattr(self.meta, "musicbrainz") and "data" in self.meta.musicbrainz):
+                originaldate = self.meta.musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
+                audio["OriginalDate"] = originaldate
+                audio["OriginalYear"] = originaldate.split("-")[0]
+
+            audio["UPC"] = self.meta.upc
+
         if isinstance(audio, FLAC):
             if embed_cover and cover:
                 audio.add_picture(cover)
