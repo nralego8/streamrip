@@ -1918,16 +1918,16 @@ class Playlist(Tracklist, Media):
 
     def init_m3u8(self):
         data = ""
-        self.m3u_name = self.parent_folder + "/" + sanitize_filename(self.title + ".m3u8")
+
+        playlist_folder = os.path.join(self.parent_folder, "-=Playlists=-")
+        if (not os.path.exists(playlist_folder)):
+            os.makedirs(playlist_folder)
+
+        self.m3u_name = os.path.join(playlist_folder, sanitize_filename(self.title + ".m3u8"))
         if os.path.isfile(self.m3u_name):
-            #open text file in read mode
-            text_file = codecs.open(self.m3u_name, "r", "utf-8")
-        
-            #read whole file to a string
-            data = text_file.read()
-        
-            #close file
-            text_file.close()
+            m3u_file = codecs.open(self.m3u_name, "r", "utf-8")
+            data = m3u_file.read()
+            m3u_file.close()
         
         self.m3u8_obj = m3u8.loads(data)
 
@@ -1953,7 +1953,7 @@ class Playlist(Tracklist, Media):
         formatter = item.meta.get_formatter(max_quality=item.meta.quality)
 
         filename = clean_format(self.file_format, formatter, restrict=kwargs.get("restrict_filenames", False))
-        final_path = sub_path + "/" + filename[:250].strip() + ext(
+        playlist_path = "../" + sub_path + "/" + filename[:250].strip() + ext(
             item.meta.quality, self.client.source
         )
 
@@ -1977,7 +1977,7 @@ class Playlist(Tracklist, Media):
         try:
             item.download(**kwargs)
         except ItemExists as e:
-            self.add_m3u8(final_path, item.meta)
+            self.add_m3u8(playlist_path, item.meta)
             return
 
 
@@ -1986,7 +1986,7 @@ class Playlist(Tracklist, Media):
             exclude_tags=kwargs.get("exclude_tags"),
         )
 
-        self.add_m3u8(final_path, item.meta)
+        self.add_m3u8(playlist_path, item.meta)
         self.downloaded_ids.add(item.id)
 
     @staticmethod
