@@ -24,7 +24,6 @@ from .utils import get_cover_urls, get_quality_id, safe_get
 
 logger = logging.getLogger("streamrip")
 
-
 class TrackMetadata:
     """Contains all of the metadata needed to tag the file.
 
@@ -123,33 +122,6 @@ class TrackMetadata:
             if v is not None:
                 setattr(self, k, v)
 
-    def get_first_release_date(self, code):
-        musicbrainzngs.set_useragent("FirstReleaseFinder", "0.1", "https://me.com")
-        musicbrainzngs.set_format("json")
-
-        release_search = musicbrainzngs.search_releases(query="barcode:" + code, limit=1)
-
-        if (release_search["count"]) == 0:
-            return {}
-        
-        release = release_search["releases"][0]
-        release_id = release["id"]
-
-        result = {}
-
-        result["data"] = {}
-        media = musicbrainzngs.get_release_by_id(release_id, ["recordings"])["media"]
-        if (len(media) == 0):
-            return {}
-        for m in media:
-            tracks = m["tracks"]
-            dict = {}
-            for track in tracks:
-                dict[track["position"]] = track["recording"]["first-release-date"]
-            result["data"][m["position"]] = dict
-
-        return result
-
     def add_album_meta(self, resp: dict):
         """Parse the metadata from an resp dict returned by the API.
 
@@ -193,10 +165,6 @@ class TrackMetadata:
             self.booklets = resp.get("goodies")
             self.id = resp.get("id")
             self.upc = resp.get("upc")
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                self.musicbrainz = self.get_first_release_date(self.upc)
 
             if self.sampling_rate is not None:
                 self.sampling_rate *= 1000

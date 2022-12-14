@@ -13,6 +13,9 @@ from pathvalidate import sanitize_filename
 from requests.packages import urllib3
 from tqdm import tqdm
 
+import musicbrainzngs
+import warnings
+
 from .constants import COVER_SIZES, TIDAL_COVER_URL
 from .exceptions import InvalidQuality, InvalidSourceError
 
@@ -449,3 +452,33 @@ def get_tqdm_bar(total, desc: Optional[str] = None, unit="B"):
         dynamic_ncols=True,
         bar_format=TQDM_BAR_FORMAT,
     )
+
+def get_first_release_date(code):
+    result = {}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        musicbrainzngs.set_useragent("FirstReleaseFinder", "0.1", "https://me.com")
+        musicbrainzngs.set_format("json")
+
+        release_search = musicbrainzngs.search_releases(query="barcode:" + code, limit=1)
+
+        if (release_search["count"]) == 0:
+            return result
+        
+        release = release_search["releases"][0]
+        release_id = release["id"]
+
+        result["data"] = {}
+        media = musicbrainzngs.get_release_by_id(release_id, ["recordings"])["media"]
+
+        if (len(media) == 0):
+            return result
+
+        for m in media:
+            tracks = m["tracks"]
+            dict = {}
+            for track in tracks:
+                dict[track["position"]] = track["recording"]["first-release-date"]
+            result["data"][m["position"]] = dict
+
+    return result

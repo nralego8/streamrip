@@ -1921,6 +1921,7 @@ class Playlist(Tracklist, Media):
         self.m3u_name = self.parent_folder + "/" + sanitize_filename(self.title + ".m3u8")
         if os.path.isfile(self.m3u_name):
             #open text file in read mode
+            text_file = codecs.open(self.m3u_name, "r", "utf-8")
         
             #read whole file to a string
             data = text_file.read()
