@@ -62,6 +62,7 @@ from .utils import (
     safe_get,
     tidal_cover_url,
     tqdm_stream,
+    get_first_release_date
 )
 
 logger = logging.getLogger("streamrip")
@@ -693,8 +694,10 @@ class Track(Media):
             else:
                 audio["Version"] = ""
 
-            if (hasattr(self.meta, "musicbrainz") and "data" in self.meta.musicbrainz):
-                originaldate = self.meta.musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
+            musicbrainz = get_first_release_date(self.meta.upc)
+            #print(musicbrainz, self.meta.upc)
+            if ("data" in musicbrainz):
+                originaldate = musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
                 audio["OriginalDate"] = originaldate
                 audio["OriginalYear"] = originaldate.split("-")[0]
 
@@ -1918,7 +1921,6 @@ class Playlist(Tracklist, Media):
         self.m3u_name = self.parent_folder + "/" + sanitize_filename(self.title + ".m3u8")
         if os.path.isfile(self.m3u_name):
             #open text file in read mode
-            text_file = open(self.m3u_name, "r")
         
             #read whole file to a string
             data = text_file.read()
