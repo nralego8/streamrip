@@ -1191,6 +1191,36 @@ class Tracklist(list):
     # anything not in parentheses or brackets
     essence_regex = re.compile(r"([^\(]+)(?:\s*[\(\[][^\)][\)\]])*")
 
+    def load_m3u8(self, playlist_folder):
+        self.m3u_name = os.path.join(playlist_folder, sanitize_filename(self.title + ".m3u8"))
+
+        data = ""
+        if os.path.isfile(self.m3u_name):
+            m3u_file = codecs.open(self.m3u_name, "r", "utf-8")
+            data = m3u_file.read()
+            m3u_file.close()
+        
+        self.m3u8_obj = m3u8.loads(data)
+
+    def add_m3u8(self, track, meta):
+        for segment in self.m3u8_obj.segments:
+            if track in segment.uri:
+                return
+        
+        segment = m3u8.Segment(track, duration=meta.duration, title=meta.title.replace(",", ""))
+        self.m3u8_obj.add_segment(segment)
+
+    def save_m3u8(self):
+        # sort playlists alphabetically
+        if(isinstance(self, Playlist)):
+            self.m3u8_obj.segments.sort(key=lambda x: x.title)
+
+        with codecs.open(self.m3u_name, "w", "utf-8") as out_file:
+            out_file.write("#PLAYLIST:" + self.title + "\n")
+            out_file.write("#SOURCE:" + self.client.source + "\n")
+            out_file.write("#ID:" + str(self.id) + "\n")
+            out_file.write(self.m3u8_obj.dumps())
+
     def download(self, **kwargs):
         """Download all of the items in the tracklist.
 
@@ -1250,6 +1280,8 @@ class Tracklist(list):
                     failed_downloads.append((item.client.source, item.type, item.id))
 
         self.downloaded = True
+        if (hasattr(self, "m3u8_obj")):
+            self.save_m3u8()
 
         if failed_downloads:
             raise PartialFailure(failed_downloads)
@@ -1558,6 +1590,11 @@ class Album(Tracklist, Media):
             self.folder = parent_folder
 
         os.makedirs(self.folder, exist_ok=True)
+        
+
+        self.load_m3u8(self.folder)
+        self.parent_folder = parent_folder
+        self.file_format = kwargs.get("track_format", TRACK_FORMAT)
 
         self.download_message()
 
@@ -1617,7 +1654,26 @@ class Album(Tracklist, Media):
             kwargs["parent_folder"] = self.folder
 
         quality = kwargs.pop("quality", 3)
-        item.download(quality=min(self.quality, quality), **kwargs)
+
+        formatter = item.meta.get_formatter(max_quality=item.meta.quality)
+
+        sub_path = os.path.relpath(kwargs["parent_folder"], self.folder)
+        if (sub_path in [".", ""]):
+            sub_path = ""
+        else:
+            sub_path += "/"
+
+        filename = clean_format(self.file_format, formatter, restrict=kwargs.get("restrict_filenames", False))
+
+        playlist_path = sub_path + filename[:250].strip() + ext(
+            item.meta.quality, self.client.source
+        )
+
+        try:
+            item.download(quality=min(self.quality, quality), **kwargs)
+        except ItemExists as e:
+            self.add_m3u8(playlist_path, item.meta)
+            return
 
         logger.debug("tagging tracks")
         # deezer tracks come tagged
@@ -1628,6 +1684,7 @@ class Album(Tracklist, Media):
                 exclude_tags=kwargs.get("exclude_tags"),
             )
 
+        self.add_m3u8(playlist_path, item.meta)
         self.downloaded_ids.add(item.id)
 
     @staticmethod
@@ -1899,6 +1956,13 @@ class Playlist(Tracklist, Media):
 
         logger.debug("Loaded %d tracks from playlist %s", len(self), self.name)
 
+    def _prepare_m3u8(self):
+        playlist_folder = os.path.join(self.parent_folder, "-=Playlists=-")
+        if (not os.path.exists(playlist_folder)):
+            os.makedirs(playlist_folder)
+        
+        self.load_m3u8(playlist_folder)
+
     def _prepare_download(self, parent_folder: str = "StreamripDownloads", **kwargs):
         if kwargs.get("folder_format"):
             fname = clean_filename(self.name, kwargs.get("restrict_filenames", False))
@@ -1913,33 +1977,8 @@ class Playlist(Tracklist, Media):
         self.__indices = iter(range(1, len(self) + 1))
         self.download_message()
 
-        self.init_m3u8()
+        self._prepare_m3u8()
         self.file_format = kwargs.get("track_format", TRACK_FORMAT)
-
-    def init_m3u8(self):
-        data = ""
-
-        playlist_folder = os.path.join(self.parent_folder, "-=Playlists=-")
-        if (not os.path.exists(playlist_folder)):
-            os.makedirs(playlist_folder)
-
-        self.m3u_name = os.path.join(playlist_folder, sanitize_filename(self.title + ".m3u8"))
-        if os.path.isfile(self.m3u_name):
-            m3u_file = codecs.open(self.m3u_name, "r", "utf-8")
-            data = m3u_file.read()
-            m3u_file.close()
-        
-        self.m3u8_obj = m3u8.loads(data)
-
-    def add_m3u8(self, track, meta):
-        for segment in self.m3u8_obj.segments:
-            if track in segment.uri:
-                return
-        
-        segment = m3u8.Segment(track, duration=meta.duration, title=meta.title.replace(",", ""))
-        self.m3u8_obj.add_segment(segment)
-        with codecs.open(self.m3u_name, "w", "utf-8") as out_file:
-            out_file.write(self.m3u8_obj.dumps())
 
     def _download_item(self, item: Media, **kwargs):
         assert isinstance(item, Track)
