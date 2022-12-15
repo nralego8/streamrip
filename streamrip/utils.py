@@ -478,7 +478,8 @@ def get_first_release_date(code):
             tracks = m["tracks"]
             dict = {}
             for track in tracks:
-                dict[track["position"]] = track["recording"]["first-release-date"]
+                if ("first-release-date" in track["recording"]):
+                    dict[track["position"]] = track["recording"]["first-release-date"]
             result["data"][m["position"]] = dict
 
     return result

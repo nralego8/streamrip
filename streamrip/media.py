@@ -696,7 +696,7 @@ class Track(Media):
 
             musicbrainz = get_first_release_date(self.meta.upc)
             #print(musicbrainz, self.meta.upc)
-            if ("data" in musicbrainz):
+            if ("data" in musicbrainz and self.meta.discnumber in musicbrainz["data"] and self.meta.tracknumber in musicbrainz["data"][self.meta.discnumber]):
                 originaldate = musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
                 audio["OriginalDate"] = originaldate
                 audio["OriginalYear"] = originaldate.split("-")[0]
