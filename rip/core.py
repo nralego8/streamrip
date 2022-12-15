@@ -647,7 +647,10 @@ class RipCore(list):
 
         results = client.search(query, media_type)
 
-        if media_type == "featured":
+        
+        if (query == "user-playlists"):
+            media_type = "playlist"
+        elif media_type == "featured":
             media_type = "album"
 
         if isinstance(results, Generator):  # QobuzClient
