@@ -11,6 +11,8 @@ from hashlib import md5
 from string import Formatter
 from typing import Dict, Generator, List, Optional, Tuple, Type, Union
 
+import shutil
+
 import requests
 from click import secho, style
 from tqdm import tqdm
@@ -44,7 +46,7 @@ from streamrip.media import (
     Video,
     YoutubeVideo,
 )
-from streamrip.utils import TQDM_DEFAULT_THEME, set_progress_bar_theme
+from streamrip.utils import TQDM_DEFAULT_THEME, set_progress_bar_theme, read_id_from_tag, read_info_from_tag
 
 from . import db
 from .config import Config
@@ -933,3 +935,91 @@ class RipCore(list):
         secho("rip config --reset ", fg="yellow", nl=False)
         secho("to reset it. You will need to log in again.", fg="red")
         secho(str(err), fg="red")
+
+    def naive_find(self, title, artist, album):
+        media_type = "track"
+        query = title + " " + artist + " " + album
+        print(query)
+        results = self.search("qobuz", query, media_type, False, 10)
+
+        for item in results:
+            if (item.meta.artist == artist and item.meta.album == album and item.meta.title == title):
+                print("Found exact match")
+                return item.id
+
+        return None
+
+    def fix(self, directory):
+        tracker = {}
+        for subdir, dirs, files in os.walk(directory):
+            for file in files:
+                filepath = subdir + os.sep + file
+
+
+                if filepath.endswith(".flac"):
+                    item_id = read_id_from_tag(filepath, "qobuz")
+                    if (item_id == None):
+                        title, artist, album = read_info_from_tag(filepath)
+                        item_id = self.naive_find(title, artist, album)
+                    if (item_id == None):
+                        break
+
+                    self.handle_item("qobuz", "track", item_id)
+                    tracker[item_id] = filepath
+
+        try:
+            arguments = self._get_download_args()
+        except KeyError as e:
+            self._config_updating_message()
+            self.config.update()
+            logger.debug("Config update error: %s", e)
+            exit()
+        except Exception as err:
+            self._config_corrupted_message(err)
+            exit()
+
+        logger.debug("Arguments from config: %s", arguments)
+
+        source_subdirs = self.config.session["downloads"]["source_subdirectories"]
+        for item in self:
+            if source_subdirs:
+                arguments["parent_folder"] = self.__get_source_subdir(
+                    item.client.source
+                )
+
+            if not isinstance(item, Tracklist) or not item.loaded:
+                logger.debug("Loading metadata")
+                try:
+                    item.load_meta(**arguments)
+                except NonStreamable:
+                    self.failed_db.add((item.client.source, item.type, item.id))
+                    secho(f"{item!s} is not available, skipping.", fg="red")
+                    continue
+            
+            arguments["quality"] = self.config.session[item.client.source]["quality"]
+
+            print(item)
+            dup = False
+            try:
+                item._prepare_download(**arguments)
+                os.makedirs(item.folder, exist_ok=True)
+                shutil.move(tracker[item.id], item.final_path)
+            except ItemExists:
+                if (tracker[item.id] != item.final_path):
+                    dup = True
+                    # new_path = os.path.join(duplicate_land, os.path.basename(tracker[item.id]))
+                    # print(new_path)
+
+
+                item.tagged = False
+
+            # emulate being downloaded
+            item.downloaded = True
+
+            if (dup):
+                item.path = tracker[item.id]
+            else:
+                item.path = item.final_path
+
+            if isinstance(item, Track):
+                item.tag(exclude_tags=arguments["exclude_tags"])
