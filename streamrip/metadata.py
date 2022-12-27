@@ -144,6 +144,8 @@ class TrackMetadata:
             self.label = resp.get("label")
             self.description = resp.get("description")
             self.disctotal = (
+                resp.get("media_count")
+                or
                 max(
                     track.get("media_number", 1)
                     for track in safe_get(resp, "tracks", "items", default=[{}])
@@ -155,6 +157,9 @@ class TrackMetadata:
             if isinstance(self.label, dict):
                 self.label = self.label.get("name")
 
+            self.id = resp.get("id")
+            self.upc = resp.get("upc")
+
             # Non-embedded information
             self.version = resp.get("version")
             self.cover_urls = get_cover_urls(resp, self.__source)
@@ -163,8 +168,6 @@ class TrackMetadata:
             self.sampling_rate = resp.get("maximum_sampling_rate")
             self.quality = get_quality_id(self.bit_depth, self.sampling_rate)
             self.booklets = resp.get("goodies")
-            self.id = resp.get("id")
-            self.upc = resp.get("upc")
 
             if self.sampling_rate is not None:
                 self.sampling_rate *= 1000
@@ -237,6 +240,7 @@ class TrackMetadata:
             self.discnumber = track.get("media_number", 1)
             self.artist = safe_get(track, "performer", "name")
             self.duration = track.get("duration", -1)
+            self.isrc = track.get("isrc")
 
         elif self.__source == "tidal":
             self.title = track["title"].strip()
