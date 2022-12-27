@@ -673,7 +673,6 @@ class RepairCommand(Command):
         config = Config()
         RipCore(config).repair(max_items=max_items)
 
-
 class DatabaseCommand(Command):
     name = "db"
     description = "View and manage rip's databases."
@@ -736,6 +735,23 @@ class DatabaseCommand(Command):
         id_table.add_rows(iter(self._db))
         id_table.render()
 
+class FixCommand(Command):
+    name = "fix"
+    description = "fix tags in already downloaded files"
+
+    arguments = [
+        argument(
+            "directory", description="directory to fix"
+        )
+    ]
+    help = "\nTag files with Qobuz\n$ <cmd>rip fix directory</cmd>\n"
+
+    def handle(self):
+        filename = self.argument("directory")
+        config = Config()
+        core = RipCore(config)
+        core.fix(filename)
+        
 
 STRING_TO_PRIMITIVE = {
     "None": None,
@@ -827,6 +843,7 @@ def main():
     application.add(ConvertCommand())
     application.add(RepairCommand())
     application.add(DatabaseCommand())
+    application.add(FixCommand())
     application.run()
 
 
