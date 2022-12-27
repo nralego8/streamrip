@@ -14,6 +14,7 @@ from requests.packages import urllib3
 from tqdm import tqdm
 
 import musicbrainzngs
+from musicbrainzngs import ResponseError
 import warnings
 
 from .constants import COVER_SIZES, TIDAL_COVER_URL
@@ -21,6 +22,8 @@ from .exceptions import InvalidQuality, InvalidSourceError
 
 urllib3.disable_warnings()
 logger = logging.getLogger("streamrip")
+
+from mutagen.flac import FLAC 
 
 
 def safe_get(d: dict, *keys: Hashable, default=None):
@@ -453,7 +456,7 @@ def get_tqdm_bar(total, desc: Optional[str] = None, unit="B"):
         bar_format=TQDM_BAR_FORMAT,
     )
 
-def get_first_release_date(code):
+def get_og_date_from_upc(code):
     result = {}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -483,3 +486,68 @@ def get_first_release_date(code):
             result["data"][m["position"]] = dict
 
     return result
+
+def get_og_date_from_isrc(isrc_code):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        musicbrainzngs.set_useragent("FirstReleaseFinder", "0.1", "https://me.com")
+        musicbrainzngs.set_format("json")
+
+        try:
+            isrc_search = musicbrainzngs.get_recordings_by_isrc(isrc_code)
+        except ResponseError:
+            return None
+
+        if ("error" in isrc_search):
+            return None
+        
+        if ("recordings" not in isrc_search):
+            return None
+
+        recordings = isrc_search["recordings"]
+        if(len(recordings) and "first-release-date" in recordings[0]):
+            return recordings[0]["first-release-date"]
+
+    return None
+
+def get_og_date_from_magic(magic):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        musicbrainzngs.set_useragent("FirstReleaseFinder", "0.1", "https://me.com")
+        musicbrainzngs.set_format("json")
+
+        try:
+            recording_search = musicbrainzngs.search_recordings(magic)
+        except ResponseError:
+            return None
+
+        if ("error" in recording_search):
+            return None
+        
+        if ("recordings" not in recording_search):
+            return None
+
+        recordings = recording_search["recordings"]
+        if(len(recordings) and "first-release-date" in recordings[0]):
+            return recordings[0]["first-release-date"]
+
+    return None
+
+
+def get_first_release_date(method, data):
+    if (method == "upc"):
+        return get_og_date_from_upc(data)
+    if (method == "magic"):
+        return get_og_date_from_magic(data)
+    return get_og_date_from_isrc(data)
+
+def read_id_from_tag(filename, source):
+    audio = FLAC(filename)
+    key = source + "id"
+    if (key in audio):
+        return audio[source + "id"][0]
+    return None
+
+def read_info_from_tag(filename):
+    audio = FLAC(filename)
+    return audio["title"][0], audio["artist"][0], audio["album"][0]
