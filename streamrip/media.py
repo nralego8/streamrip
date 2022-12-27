@@ -239,9 +239,10 @@ class Track(Media):
             kwargs["quality"], self.client.max_quality, self.meta.quality
         )
 
+        self.parent_folder = kwargs["parent_folder"]
         self.folder = kwargs["parent_folder"] or self.folder
 
-        if not self.part_of_tracklist and kwargs["add_singles_to_folder"]:
+        if kwargs["add_singles_to_folder"]:
             self.folder = os.path.join(
                 self.folder,
                 clean_format(
@@ -251,9 +252,13 @@ class Track(Media):
                 ),
             )
 
+            if (self.meta.disctotal > 1):
+                self.folder = os.path.join(self.folder, f"Disc {self.meta.discnumber}")
+
         self.file_format = kwargs.get("track_format", TRACK_FORMAT)
 
         self.folder = sanitize_filepath(self.folder, platform="auto")
+
         self.format_final_path(
             restrict=kwargs.get("restrict_filenames", False)
         )  # raises: ItemExists
@@ -515,6 +520,14 @@ class Track(Media):
             logger.debug("Cover already exists, skipping download")
             raise ItemExists(self.cover_path)
 
+    def format_helper(self, parent, folder, filename, restrict: bool = False):
+        self.final_path = os.path.join(folder, filename)[:250].strip() + ext(
+            self.quality, self.client.source
+        )
+
+        sub = os.path.basename(os.path.normpath(parent))
+        self.rel_path = "../" + sub + "/" + os.path.relpath(self.final_path, parent).replace("\\", "/")
+
     def format_final_path(self, restrict: bool = False) -> str:
         """Return the final filepath of the downloaded file.
 
@@ -525,17 +538,29 @@ class Track(Media):
         formatter = self.meta.get_formatter(max_quality=self.quality)
         logger.debug("Track meta formatter %s", formatter)
         filename = clean_format(self.file_format, formatter, restrict=restrict)
-        self.final_path = os.path.join(self.folder, filename)[:250].strip() + ext(
-            self.quality, self.client.source
-        )
 
-        logger.debug("Formatted path: %s", self.final_path)
+        self.format_helper(self.parent_folder, self.folder, filename, restrict)
 
         if os.path.isfile(self.final_path):  # track already exists
             self.downloaded = True
             self.tagged = True
             self.path = self.final_path
             raise ItemExists(self.final_path)
+
+        up_one = os.path.dirname(os.path.normpath(self.parent_folder))
+        other_folders = [ f.path for f in os.scandir(up_one) if f.is_dir() and f.path != self.parent_folder ]
+        for subfolder in other_folders:
+            test = os.path.join(subfolder, os.path.relpath(self.folder, self.parent_folder))
+            self.format_helper(subfolder, test, filename, restrict)
+            if os.path.isfile(self.final_path):  # track already exists
+                self.downloaded = True
+                self.tagged = True
+                self.path = self.final_path
+                raise ItemExists(self.final_path)
+
+        self.format_helper(self.parent_folder, self.folder, filename, restrict)
+
+        logger.debug("Formatted path: %s", self.final_path)
 
         return self.final_path
 
@@ -617,7 +642,6 @@ class Track(Media):
                 self["title"],
             )
             return
-
         if self.tagged:
             logger.info(
                 "Track %s not tagged because it is already tagged",
@@ -694,14 +718,41 @@ class Track(Media):
             else:
                 audio["Version"] = ""
 
-            musicbrainz = get_first_release_date(self.meta.upc)
-            #print(musicbrainz, self.meta.upc)
-            if ("data" in musicbrainz and self.meta.discnumber in musicbrainz["data"] and self.meta.tracknumber in musicbrainz["data"][self.meta.discnumber]):
-                originaldate = musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
+
+            found_og_date = False
+
+            originaldate = get_first_release_date("isrc", self.meta.isrc)
+            if (originaldate != None):
                 audio["OriginalDate"] = originaldate
                 audio["OriginalYear"] = originaldate.split("-")[0]
+                found_og_date = True
+
+
+            if (found_og_date == False):
+                musicbrainz = get_first_release_date("upc", self.meta.upc)
+                if ("data" in musicbrainz and self.meta.discnumber in musicbrainz["data"] and self.meta.tracknumber in musicbrainz["data"][self.meta.discnumber]):
+                    originaldate = musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
+                    audio["OriginalDate"] = originaldate
+                    audio["OriginalYear"] = originaldate.split("-")[0]
+                    found_og_date = True
+
+
+            if(found_og_date == False):
+                title = re.sub("[\(\[].*?[\)\]]", "", self.meta.title)
+                album = re.sub("[\(\[].*?[\)\]]", "", self.meta.album)
+                artist = re.sub("[\(\[].*?[\)\]]", "", self.meta.artist)
+                query = "artistname:" + artist + " AND " + "recording:" + title + " AND " + "release:" + album
+                originaldate = get_first_release_date("magic", query)
+                if (originaldate != None):
+                    audio["OriginalDate"] = originaldate
+                    audio["OriginalYear"] = originaldate.split("-")[0]
+
 
             audio["UPC"] = self.meta.upc
+            audio["ISRC"] = self.meta.isrc
+
+            if (hasattr(self.meta, "label")):
+                audio["Label"] = self.meta.label
 
         if isinstance(audio, FLAC):
             if embed_cover and cover:
@@ -1648,26 +1699,19 @@ class Album(Tracklist, Media):
             and isinstance(item, Track)
             and kwargs.get("folder_format")
         ):
-            disc_folder = os.path.join(self.folder, f"Disc {item.meta.discnumber}")
-            kwargs["parent_folder"] = disc_folder
+            sub_path = f"Disc {item.meta.discnumber}" + "/"
         else:
-            kwargs["parent_folder"] = self.folder
-
-        quality = kwargs.pop("quality", 3)
-
-        formatter = item.meta.get_formatter(max_quality=item.meta.quality)
-
-        sub_path = os.path.relpath(kwargs["parent_folder"], self.folder)
-        if (sub_path in [".", ""]):
             sub_path = ""
-        else:
-            sub_path += "/"
+        
+        formatter = item.meta.get_formatter(max_quality=item.meta.quality)
 
         filename = clean_format(self.file_format, formatter, restrict=kwargs.get("restrict_filenames", False))
 
         playlist_path = sub_path + filename[:250].strip() + ext(
             item.meta.quality, self.client.source
         )
+
+        quality = kwargs.pop("quality", 3)
 
         try:
             item.download(quality=min(self.quality, quality), **kwargs)
@@ -1957,18 +2001,18 @@ class Playlist(Tracklist, Media):
         logger.debug("Loaded %d tracks from playlist %s", len(self), self.name)
 
     def _prepare_m3u8(self):
-        playlist_folder = os.path.join(self.parent_folder, "-=Playlists=-")
+        playlist_folder = os.path.join(self.parent_folder, "../-=Playlists=-")
         if (not os.path.exists(playlist_folder)):
             os.makedirs(playlist_folder)
         
         self.load_m3u8(playlist_folder)
 
     def _prepare_download(self, parent_folder: str = "StreamripDownloads", **kwargs):
-        if kwargs.get("folder_format"):
-            fname = clean_filename(self.name, kwargs.get("restrict_filenames", False))
-            self.folder = os.path.join(parent_folder, fname)
-        else:
-            self.folder = parent_folder
+        # if kwargs.get("folder_format"):
+        #     fname = clean_filename(self.name, kwargs.get("restrict_filenames", False))
+        #     self.folder = os.path.join(parent_folder, fname)
+        # else:
+        #     self.folder = parent_folder
 
         self.parent_folder = parent_folder
 
@@ -1983,23 +2027,7 @@ class Playlist(Tracklist, Media):
     def _download_item(self, item: Media, **kwargs):
         assert isinstance(item, Track)
 
-        sub_path = clean_format(
-            kwargs.get("folder_format", FOLDER_FORMAT),
-            item.meta.get_album_formatter(item.meta.quality),
-            restrict=kwargs.get("restrict_filenames", False),
-        )
-
-        formatter = item.meta.get_formatter(max_quality=item.meta.quality)
-
-        filename = clean_format(self.file_format, formatter, restrict=kwargs.get("restrict_filenames", False))
-        playlist_path = "../" + sub_path + "/" + filename[:250].strip() + ext(
-            item.meta.quality, self.client.source
-        )
-
-        kwargs["parent_folder"] = os.path.join(
-            self.parent_folder,
-            sub_path
-        )
+        kwargs["parent_folder"] = self.parent_folder
         kwargs["playlist_mode"] = True
 
         if self.client.source == "soundcloud":
@@ -2016,7 +2044,7 @@ class Playlist(Tracklist, Media):
         try:
             item.download(**kwargs)
         except ItemExists as e:
-            self.add_m3u8(playlist_path, item.meta)
+            self.add_m3u8(item.rel_path, item.meta)
             return
 
 
@@ -2025,7 +2053,7 @@ class Playlist(Tracklist, Media):
             exclude_tags=kwargs.get("exclude_tags"),
         )
 
-        self.add_m3u8(playlist_path, item.meta)
+        self.add_m3u8(item.rel_path, item.meta)
         self.downloaded_ids.add(item.id)
 
     @staticmethod
