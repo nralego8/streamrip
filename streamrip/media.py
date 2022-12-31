@@ -25,6 +25,7 @@ from typing import (
 
 from click import echo, secho, style
 import m3u8
+import time
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, ID3NoHeaderError
 from mutagen.mp4 import MP4, MP4Cover
@@ -525,8 +526,8 @@ class Track(Media):
             self.quality, self.client.source
         )
 
-        sub = os.path.basename(os.path.normpath(parent))
-        self.rel_path = "../" + sub + "/" + os.path.relpath(self.final_path, parent).replace("\\", "/")
+        # sub = os.path.basename(os.path.normpath(parent))
+        # self.rel_path = "../" + sub + "/" + os.path.relpath(self.final_path, parent).replace("\\", "/")
 
     def format_final_path(self, restrict: bool = False) -> str:
         """Return the final filepath of the downloaded file.
@@ -540,6 +541,8 @@ class Track(Media):
         filename = clean_format(self.file_format, formatter, restrict=restrict)
 
         self.format_helper(self.parent_folder, self.folder, filename, restrict)
+
+        self.real_final_path = self.final_path
 
         if os.path.isfile(self.final_path):  # track already exists
             self.downloaded = True
@@ -705,26 +708,28 @@ class Track(Media):
         # nralego8's extended tags
 
         # id tag (og client id)
-        id_tag = self.client.source.capitalize() + "id"
+        id_tag = self.client.source.upper() + "ID"
         audio[id_tag] = str(self.id)
+
+        audio["SRDATE"] = str(int(time.time()))
 
         if (self.client.source == "qobuz"):
             # explicit tag
-            audio["Explicit"] = str(self.meta.explicit)
+            audio["EXPLICIT"] = str(self.meta.explicit)
 
             # version
             if (hasattr(self.meta, "version")):
-                audio["Version"] = str(self.meta.version)
+                audio["VERSION"] = str(self.meta.version)
             else:
-                audio["Version"] = ""
+                audio["VERSION"] = ""
 
 
             found_og_date = False
 
             originaldate = get_first_release_date("isrc", self.meta.isrc)
             if (originaldate != None):
-                audio["OriginalDate"] = originaldate
-                audio["OriginalYear"] = originaldate.split("-")[0]
+                audio["ORIGINALDATE"] = originaldate
+                audio["ORIGINALYEAR"] = originaldate.split("-")[0]
                 found_og_date = True
 
 
@@ -732,8 +737,8 @@ class Track(Media):
                 musicbrainz = get_first_release_date("upc", self.meta.upc)
                 if ("data" in musicbrainz and self.meta.discnumber in musicbrainz["data"] and self.meta.tracknumber in musicbrainz["data"][self.meta.discnumber]):
                     originaldate = musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
-                    audio["OriginalDate"] = originaldate
-                    audio["OriginalYear"] = originaldate.split("-")[0]
+                    audio["ORIGINALDATE"] = originaldate
+                    audio["ORIGINALYEAR"] = originaldate.split("-")[0]
                     found_og_date = True
 
 
@@ -744,15 +749,15 @@ class Track(Media):
                 query = "artistname:" + artist + " AND " + "recording:" + title + " AND " + "release:" + album
                 originaldate = get_first_release_date("magic", query)
                 if (originaldate != None):
-                    audio["OriginalDate"] = originaldate
-                    audio["OriginalYear"] = originaldate.split("-")[0]
+                    audio["ORIGINALDATE"] = originaldate
+                    audio["ORIGINALYEAR"] = originaldate.split("-")[0]
 
 
             audio["UPC"] = self.meta.upc
             audio["ISRC"] = self.meta.isrc
 
             if (hasattr(self.meta, "label")):
-                audio["Label"] = self.meta.label
+                audio["LABEL"] = self.meta.label
 
         if isinstance(audio, FLAC):
             if embed_cover and cover:
@@ -1243,10 +1248,13 @@ class Tracklist(list):
     essence_regex = re.compile(r"([^\(]+)(?:\s*[\(\[][^\)][\)\]])*")
 
     def load_m3u8(self, playlist_folder):
-        self.m3u_name = os.path.join(playlist_folder, sanitize_filename(self.title + ".m3u8"))
+        if(isinstance(self, Album)):
+            self.m3u_name = os.path.join(playlist_folder, sanitize_filename(self.albumartist.split(",")[0] + " - " + self.title + ".m3u8"))
+        else:       
+            self.m3u_name = os.path.join(playlist_folder, sanitize_filename(self.title + ".m3u8"))
 
         data = ""
-        if os.path.isfile(self.m3u_name):
+        if isinstance(self, Playlist) and os.path.isfile(self.m3u_name):
             m3u_file = codecs.open(self.m3u_name, "r", "utf-8")
             data = m3u_file.read()
             m3u_file.close()
@@ -1262,9 +1270,10 @@ class Tracklist(list):
         self.m3u8_obj.add_segment(segment)
 
     def save_m3u8(self):
-        # sort playlists alphabetically
-        if(isinstance(self, Playlist)):
-            self.m3u8_obj.segments.sort(key=lambda x: x.title)
+        if(isinstance(self, Album) and len(self.m3u8_obj.segments) <= 1):
+            return
+
+        self.m3u8_obj.segments.sort(key=lambda x: x.title)
 
         with codecs.open(self.m3u_name, "w", "utf-8") as out_file:
             out_file.write("#PLAYLIST:" + self.title + "\n")
@@ -1613,6 +1622,13 @@ class Album(Tracklist, Media):
         info = cls._parse_get_resp(resp, client)
         return cls(client, **info.asdict())
 
+    def _prepare_m3u8(self):
+        playlist_folder = os.path.join(self.parent_folder, "../-=Album Playlists=-")
+        if (not os.path.exists(playlist_folder)):
+            os.makedirs(playlist_folder)
+        
+        self.load_m3u8(playlist_folder)
+
     def _prepare_download(self, **kwargs):
         """Prepare the download of the album.
 
@@ -1643,9 +1659,9 @@ class Album(Tracklist, Media):
         os.makedirs(self.folder, exist_ok=True)
         
 
-        self.load_m3u8(self.folder)
         self.parent_folder = parent_folder
         self.file_format = kwargs.get("track_format", TRACK_FORMAT)
+        self._prepare_m3u8()
 
         self.download_message()
 
@@ -1694,29 +1710,13 @@ class Album(Tracklist, Media):
         :rtype: bool
         """
         logger.debug("Downloading track to %s", self.folder)
-        if (
-            self.disctotal > 1
-            and isinstance(item, Track)
-            and kwargs.get("folder_format")
-        ):
-            sub_path = f"Disc {item.meta.discnumber}" + "/"
-        else:
-            sub_path = ""
-        
-        formatter = item.meta.get_formatter(max_quality=item.meta.quality)
-
-        filename = clean_format(self.file_format, formatter, restrict=kwargs.get("restrict_filenames", False))
-
-        playlist_path = sub_path + filename[:250].strip() + ext(
-            item.meta.quality, self.client.source
-        )
 
         quality = kwargs.pop("quality", 3)
 
         try:
             item.download(quality=min(self.quality, quality), **kwargs)
         except ItemExists as e:
-            self.add_m3u8(playlist_path, item.meta)
+            self.add_m3u8(item.final_path, item.meta)
             return
 
         logger.debug("tagging tracks")
@@ -1728,7 +1728,7 @@ class Album(Tracklist, Media):
                 exclude_tags=kwargs.get("exclude_tags"),
             )
 
-        self.add_m3u8(playlist_path, item.meta)
+        self.add_m3u8(item.final_path, item.meta)
         self.downloaded_ids.add(item.id)
 
     @staticmethod
@@ -2044,7 +2044,7 @@ class Playlist(Tracklist, Media):
         try:
             item.download(**kwargs)
         except ItemExists as e:
-            self.add_m3u8(item.rel_path, item.meta)
+            self.add_m3u8(item.final_path, item.meta)
             return
 
 
@@ -2053,7 +2053,7 @@ class Playlist(Tracklist, Media):
             exclude_tags=kwargs.get("exclude_tags"),
         )
 
-        self.add_m3u8(item.rel_path, item.meta)
+        self.add_m3u8(item.final_path, item.meta)
         self.downloaded_ids.add(item.id)
 
     @staticmethod
