@@ -1,17 +1,19 @@
 """The stuff that ties everything together for the CLI to use."""
 
-import concurrent.futures
 import html
 import logging
+import multiprocessing
 import os
 import re
 import threading
 from getpass import getpass
 from hashlib import md5
 from string import Formatter
+import time
 from typing import Dict, Generator, List, Optional, Tuple, Type, Union
 
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from click import secho, style
@@ -46,7 +48,7 @@ from streamrip.media import (
     Video,
     YoutubeVideo,
 )
-from streamrip.utils import TQDM_DEFAULT_THEME, set_progress_bar_theme, read_id_from_tag, read_info_from_tag
+from streamrip.utils import TQDM_DEFAULT_THEME, set_progress_bar_theme, read_id_from_tag, read_info_from_tag, read_time_from_tag
 
 from . import db
 from .config import Config
@@ -949,23 +951,8 @@ class RipCore(list):
 
         return None
 
-    def fix(self, directory):
-        tracker = {}
-        for subdir, dirs, files in os.walk(directory):
-            for file in files:
-                filepath = subdir + os.sep + file
-
-
-                if filepath.endswith(".flac"):
-                    item_id = read_id_from_tag(filepath, "qobuz")
-                    if (item_id == None):
-                        title, artist, album = read_info_from_tag(filepath)
-                        item_id = self.naive_find(title, artist, album)
-                    if (item_id == None):
-                        break
-
-                    self.handle_item("qobuz", "track", item_id)
-                    tracker[item_id] = filepath
+    def fix(self, directory, force_update=False):
+        tagging_standard_time = 1671947411
 
         try:
             arguments = self._get_download_args()
@@ -981,45 +968,121 @@ class RipCore(list):
         logger.debug("Arguments from config: %s", arguments)
 
         source_subdirs = self.config.session["downloads"]["source_subdirectories"]
-        for item in self:
-            if source_subdirs:
-                arguments["parent_folder"] = self.__get_source_subdir(
-                    item.client.source
-                )
 
-            if not isinstance(item, Tracklist) or not item.loaded:
-                logger.debug("Loading metadata")
-                try:
-                    item.load_meta(**arguments)
-                except NonStreamable:
-                    self.failed_db.add((item.client.source, item.type, item.id))
-                    secho(f"{item!s} is not available, skipping.", fg="red")
-                    continue
-            
-            arguments["quality"] = self.config.session[item.client.source]["quality"]
+        self.parent_folder = arguments["parent_folder"]
 
-            print(item)
-            dup = False
-            try:
-                item._prepare_download(**arguments)
-                os.makedirs(item.folder, exist_ok=True)
-                shutil.move(tracker[item.id], item.final_path)
-            except ItemExists:
-                if (tracker[item.id] != item.final_path):
-                    dup = True
-                    # new_path = os.path.join(duplicate_land, os.path.basename(tracker[item.id]))
-                    # print(new_path)
+        os.makedirs(os.path.join(self.parent_folder, "../Duplicates"), exist_ok=True)
+        os.makedirs(os.path.join(self.parent_folder, "../Unknown"), exist_ok=True)
+        self.time = str(int(time.time()))
+        executor = ThreadPoolExecutor(max_workers=8)
+        m = multiprocessing.Manager()
+        lock = m.Lock()
+        client = self.get_client("qobuz")
+        for subdir, dirs, files in os.walk(directory):
+            for file in files:
+                filepath = subdir + os.sep + file
 
+                if filepath.endswith(".flac"):
+                    launch_thread = False
+                    if (force_update):
+                        launch_thread = True
+                    else:
+                        tag_date = read_time_from_tag(filepath)
+                        if (tag_date == None or tag_date < tagging_standard_time):
+                            launch_thread = True
+                        
+                    if (launch_thread):
+                        executor.submit(self.fixing_thread, lock, client, arguments, source_subdirs, directory, filepath)
 
-                item.tagged = False
+    def get_ez_path(self, folder, directory, file):
+        return os.path.join(folder, self.time + "\\" + os.path.relpath(file, directory))
 
-            # emulate being downloaded
-            item.downloaded = True
+    def create_and_move(self, src, dst):
+        print(src, "-->", dst)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.move(src, dst)
 
-            if (dup):
-                item.path = tracker[item.id]
+    def deal_with(self, dup_land, directory, current, desired):
+        if (os.path.abspath(current) == os.path.abspath(desired)):
+            return current, current
+
+        src = current
+        dst = desired
+        
+        if(os.path.exists(desired)):
+            current_size = os.stat(current).st_size
+            desired_size = os.stat(desired).st_size
+            if (current_size > desired_size):
+                src = desired
+                dst = self.get_ez_path(dup_land, directory, desired)
             else:
-                item.path = item.final_path
+                src = current
+                dst = self.get_ez_path(dup_land, directory, current)
 
-            if isinstance(item, Track):
-                item.tag(exclude_tags=arguments["exclude_tags"])
+        return src, dst
+           
+
+    def fixing_thread(self, lock, client, arguments, source_subdirs, directory, file):
+        item_id = read_id_from_tag(file, "qobuz")
+        if (item_id == None):
+            title, artist, album = read_info_from_tag(file)
+            item_id = self.naive_find(title, artist, album)
+        if (item_id == None):
+            new = self.get_ez_path(os.path.join(self.parent_folder, "../Unknown"), directory, file)
+            self.create_and_move(file, new)
+            return
+
+        item = Track(client=client, id=item_id)
+
+        if source_subdirs:
+            arguments["parent_folder"] = self.__get_source_subdir(
+                item.client.source
+            )
+
+        if not isinstance(item, Tracklist) or not item.loaded:
+            logger.debug("Loading metadata")
+            try:
+                item.load_meta(**arguments)
+            except NonStreamable:
+                return
+        
+        arguments["quality"] = self.config.session[item.client.source]["quality"]
+
+        print(item)
+        try:
+            item._prepare_download(**arguments)
+            # os.makedirs(item.folder, exist_ok=True)
+            # shutil.move(file, item.final_path)
+        except ItemExists:
+            # if (item.final_path != file):
+                # print(str(int(time.time())) + os.path.basename(file))
+                # new_path = os.path.join("M:\\-=Music=-\\Duplicates", str(int(time.time())) + os.path.basename(file))
+                # item.final_path = new_path
+                # os.makedirs("M:\\-=Music=-\\Duplicates", exist_ok=True)
+                # shutil.move(file, item.final_path)
+
+            item.tagged = False
+
+        # emulate being downloaded
+        item.downloaded = True
+        item.path = file
+        if isinstance(item, Track):
+            item.tag(exclude_tags=arguments["exclude_tags"])
+
+        dup_land = os.path.join(self.parent_folder, "../Duplicates")
+
+        src_flac, dst_flac = self.deal_with(dup_land, directory, file, item.real_final_path)
+        lrc_file = file.replace(".flac", ".lrc")
+        lyric_move = False
+        if (os.path.exists(lrc_file)):
+            lyric_move = True
+            src_lrc, dst_lrc = self.deal_with(dup_land, directory, lrc_file, item.real_final_path.replace(".flac", ".lrc"))
+
+        if (src_flac != dst_flac):
+            with lock:
+                self.create_and_move(src_flac, dst_flac)
+                if (lyric_move):
+                    self.create_and_move(src_lrc, dst_lrc)
+                subdir = os.path.dirname(file)
+                if len(os.listdir(subdir)) == 0:
+                    os.rmdir(subdir)
