@@ -546,9 +546,15 @@ def get_first_release_date(method, data):
 
 def read_id_from_tag(filename, source):
     audio = FLAC(filename)
-    key = source + "id"
+    key = source + "ID"
     if (key in audio):
-        return audio[source + "id"][0]
+        return audio[source + "ID"][0]
+    return None
+
+def read_time_from_tag(filename):
+    audio = FLAC(filename)
+    if ("SRDATE" in audio):
+        return int(audio["SRDATE"][0])
     return None
 
 def read_info_from_tag(filename):
