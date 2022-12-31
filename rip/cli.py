@@ -744,13 +744,25 @@ class FixCommand(Command):
             "directory", description="directory to fix"
         )
     ]
+    options = [
+        option(
+            "--force",
+            "-f",
+            description="Force the updating of all files in the directory",
+            flag=True,
+            value_required=False
+        )
+    ]
     help = "\nTag files with Qobuz\n$ <cmd>rip fix directory</cmd>\n"
 
     def handle(self):
-        filename = self.argument("directory")
+        directory = self.argument("directory")
         config = Config()
         core = RipCore(config)
-        core.fix(filename)
+        force_update = False
+        if self.option("force"):
+            force_update = True
+        core.fix(directory, force_update)
         
 
 STRING_TO_PRIMITIVE = {
