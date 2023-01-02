@@ -198,6 +198,12 @@ class QobuzClient(Client):
         :rtype: dict
         """
         resp = self._api_get(media_type, item_id=item_id)
+        spot = resp["tracks"]["limit"]
+        while (spot < resp["tracks"]["total"]):
+            part = self._api_get(media_type, item_id=item_id, offset=spot)
+            resp["tracks"]["items"] += part["tracks"]["items"]
+            spot += part["tracks"]["limit"]
+            resp["tracks"]["limit"] = spot
         logger.debug(resp)
         return resp
 
