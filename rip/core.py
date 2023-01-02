@@ -978,7 +978,7 @@ class RipCore(list):
         m = multiprocessing.Manager()
         lock = m.Lock()
         client = self.get_client("qobuz")
-        for subdir, dirs, files in os.walk(directory):
+        for subdir, dirs, files in os.walk(directory, topdown=False):
             for file in files:
                 filepath = subdir + os.sep + file
 
@@ -1004,22 +1004,22 @@ class RipCore(list):
 
     def deal_with(self, dup_land, directory, current, desired):
         if (os.path.abspath(current) == os.path.abspath(desired)):
-            return current, current
+            return None
 
-        src = current
-        dst = desired
+        files = []
         
         if(os.path.exists(desired)):
             current_size = os.stat(current).st_size
             desired_size = os.stat(desired).st_size
             if (current_size > desired_size):
-                src = desired
-                dst = self.get_ez_path(dup_land, directory, desired)
+                files.append((desired, self.get_ez_path(dup_land, self.parent_folder, desired)))
+                files.append((current, desired))
             else:
-                src = current
-                dst = self.get_ez_path(dup_land, directory, current)
+                files.append((current, self.get_ez_path(dup_land, directory, current)))
+        else:
+            files.append((current, desired))
 
-        return src, dst
+        return files
            
 
     def fixing_thread(self, lock, client, arguments, source_subdirs, directory, file):
@@ -1051,16 +1051,7 @@ class RipCore(list):
         print(item)
         try:
             item._prepare_download(**arguments)
-            # os.makedirs(item.folder, exist_ok=True)
-            # shutil.move(file, item.final_path)
         except ItemExists:
-            # if (item.final_path != file):
-                # print(str(int(time.time())) + os.path.basename(file))
-                # new_path = os.path.join("M:\\-=Music=-\\Duplicates", str(int(time.time())) + os.path.basename(file))
-                # item.final_path = new_path
-                # os.makedirs("M:\\-=Music=-\\Duplicates", exist_ok=True)
-                # shutil.move(file, item.final_path)
-
             item.tagged = False
 
         # emulate being downloaded
@@ -1070,19 +1061,21 @@ class RipCore(list):
             item.tag(exclude_tags=arguments["exclude_tags"])
 
         dup_land = os.path.join(self.parent_folder, "../Duplicates")
+        
+        print(file)
+        print(item.final_path)
 
-        src_flac, dst_flac = self.deal_with(dup_land, directory, file, item.real_final_path)
+        files = self.deal_with(dup_land, directory, file, item.real_final_path)
         lrc_file = file.replace(".flac", ".lrc")
-        lyric_move = False
         if (os.path.exists(lrc_file)):
-            lyric_move = True
-            src_lrc, dst_lrc = self.deal_with(dup_land, directory, lrc_file, item.real_final_path.replace(".flac", ".lrc"))
+            lrc_target = item.real_final_path.replace(".flac", ".lrc")
+            files = files + self.deal_with(dup_land, directory, lrc_file, lrc_target)
 
-        if (src_flac != dst_flac):
+        if (files != None):
             with lock:
-                self.create_and_move(src_flac, dst_flac)
-                if (lyric_move):
-                    self.create_and_move(src_lrc, dst_lrc)
+                for pair in files:
+                    self.create_and_move(pair[0], pair[1])
+                    
                 subdir = os.path.dirname(file)
                 if len(os.listdir(subdir)) == 0:
                     os.rmdir(subdir)
