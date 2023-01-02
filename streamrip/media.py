@@ -1623,7 +1623,7 @@ class Album(Tracklist, Media):
         return cls(client, **info.asdict())
 
     def _prepare_m3u8(self):
-        playlist_folder = os.path.join(self.parent_folder, "../-=Album Playlists=-")
+        playlist_folder = os.path.join(self.parent_folder, "../-=Playlists=-/-=Streamrip=-/Albums")
         if (not os.path.exists(playlist_folder)):
             os.makedirs(playlist_folder)
         
@@ -2001,7 +2001,7 @@ class Playlist(Tracklist, Media):
         logger.debug("Loaded %d tracks from playlist %s", len(self), self.name)
 
     def _prepare_m3u8(self):
-        playlist_folder = os.path.join(self.parent_folder, "../-=Playlists=-")
+        playlist_folder = os.path.join(self.parent_folder, "../-=Playlists=-/-=Streamrip=-")
         if (not os.path.exists(playlist_folder)):
             os.makedirs(playlist_folder)
         
