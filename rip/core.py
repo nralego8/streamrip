@@ -726,7 +726,7 @@ class RipCore(list):
         query: str,
         source: str = "qobuz",
         media_type: str = "album",
-        limit: int = 50,
+        limit: int = 1000,
     ):
         """Show an interactive menu that contains search results.
 
