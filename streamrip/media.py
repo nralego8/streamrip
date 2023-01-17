@@ -1273,10 +1273,11 @@ class Tracklist(list):
         if(isinstance(self, Album) and len(self.m3u8_obj.segments) <= 1):
             return
 
-        self.m3u8_obj.segments.sort(key=lambda x: x.title)
+        #self.m3u8_obj.segments.sort(key=lambda x: x.title)
 
         with codecs.open(self.m3u_name, "w", "utf-8") as out_file:
             out_file.write("#PLAYLIST:" + self.title + "\n")
+            out_file.write("#COUNT:" + str(len(self)) + "\n")
             out_file.write("#SOURCE:" + self.client.source + "\n")
             out_file.write("#ID:" + str(self.id) + "\n")
             out_file.write(self.m3u8_obj.dumps())
