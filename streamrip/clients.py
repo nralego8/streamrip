@@ -198,12 +198,15 @@ class QobuzClient(Client):
         :rtype: dict
         """
         resp = self._api_get(media_type, item_id=item_id)
-        spot = resp["tracks"]["limit"]
-        while (spot < resp["tracks"]["total"]):
-            part = self._api_get(media_type, item_id=item_id, offset=spot)
-            resp["tracks"]["items"] += part["tracks"]["items"]
-            spot += part["tracks"]["limit"]
-            resp["tracks"]["limit"] = spot
+
+        if (media_type in ("playlist", "album")):
+            spot = resp["tracks"]["limit"]
+            while (spot < resp["tracks"]["total"]):
+                part = self._api_get(media_type, item_id=item_id, offset=spot)
+                resp["tracks"]["items"] += part["tracks"]["items"]
+                spot += part["tracks"]["limit"]
+                resp["tracks"]["limit"] = spot
+        
         logger.debug(resp)
         return resp
 
@@ -245,6 +248,8 @@ class QobuzClient(Client):
         page, status_code = self._api_request(epoint, params)
         logger.debug("Keys returned from _gen_pages: %s", ", ".join(page.keys()))
         key = epoint.split("/")[0] + "s"
+        if (key == "favorites"):
+            key = params["type"]
         total = page.get(key, {})
         total = total.get("total") or total.get("items")
 
@@ -336,7 +341,7 @@ class QobuzClient(Client):
             epoint = "album/getFeatured"
 
         elif query == "user-favorites":
-            assert query in ("track", "artist", "album")
+            assert media_type in ("track", "artist", "album")
             params.update({"type": f"{media_type}s"})
             epoint = "favorite/getUserFavorites"
 
