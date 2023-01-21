@@ -155,8 +155,13 @@ def clean_format(formatter: str, format_info, restrict: bool = False):
     if ("album" in format_info):
         formatter = formatter.replace("title", "album")
 
-    if ("albumartist" in format_info):
+    if ("albumartist" in format_info and format_info["albumartist"] != None):
         format_info["albumartist"] = format_info["albumartist"].split(",")[0]
+    else:
+        format_info["albumartist"] = "Various Artists"
+
+    if ("artist" in format_info and format_info["artist"] == None and format_info["composer"] != None):
+        format_info["artist"] = format_info["composer"]
 
     fmt_keys = filter(None, (i[1] for i in Formatter().parse(formatter)))
     # fmt_keys = (i[1] for i in Formatter().parse(formatter) if i[1] is not None)
