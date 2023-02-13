@@ -529,6 +529,23 @@ class Track(Media):
         # sub = os.path.basename(os.path.normpath(parent))
         # self.rel_path = "../" + sub + "/" + os.path.relpath(self.final_path, parent).replace("\\", "/")
 
+    def check_track(self):
+        if os.path.isfile(self.final_path):
+            try:
+                audio = FLAC(self.final_path)
+                if (self.meta.sampling_rate > audio.info.sample_rate):
+                    return
+                elif (self.meta.bit_depth > audio.info.bits_per_sample):
+                    return
+            except:
+                # if we can't open the existing file, assume it is it lower res
+                return
+            
+            self.downloaded = True
+            self.tagged = True
+            self.path = self.final_path
+            raise ItemExists(self.final_path)
+
     def format_final_path(self, restrict: bool = False) -> str:
         """Return the final filepath of the downloaded file.
 
@@ -544,22 +561,14 @@ class Track(Media):
 
         self.real_final_path = self.final_path
 
-        if os.path.isfile(self.final_path):  # track already exists
-            self.downloaded = True
-            self.tagged = True
-            self.path = self.final_path
-            raise ItemExists(self.final_path)
+        self.check_track() # track already exists
 
         up_one = os.path.dirname(os.path.normpath(self.parent_folder))
         other_folders = [ f.path for f in os.scandir(up_one) if f.is_dir() and f.path != self.parent_folder ]
         for subfolder in other_folders:
             test = os.path.join(subfolder, os.path.relpath(self.folder, self.parent_folder))
             self.format_helper(subfolder, test, filename, restrict)
-            if os.path.isfile(self.final_path):  # track already exists
-                self.downloaded = True
-                self.tagged = True
-                self.path = self.final_path
-                raise ItemExists(self.final_path)
+            self.check_track()
 
         self.format_helper(self.parent_folder, self.folder, filename, restrict)
 
