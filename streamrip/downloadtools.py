@@ -63,7 +63,7 @@ class DownloadStream:
             params = {}
 
         self.request = self.session.get(
-            url, allow_redirects=True, stream=True, params=params
+            url, allow_redirects=True, stream=True, params=params, timeout=20
         )
         self.file_size = int(self.request.headers.get("Content-Length", 0))
 

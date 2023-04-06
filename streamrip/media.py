@@ -30,6 +30,7 @@ from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, ID3NoHeaderError
 from mutagen.mp4 import MP4, MP4Cover
 from pathvalidate import sanitize_filename, sanitize_filepath
+import requests
 from tomlkit import item
 
 from . import converter
@@ -2473,9 +2474,16 @@ def _get_tracklist(resp: dict, source: str) -> list:
 
 
 def _quick_download(url: str, path: str, desc: str = None):
-    with open(path, "wb") as file:
-        for chunk in tqdm_stream(DownloadStream(url), desc=desc):
-            file.write(chunk)
+    while (True):
+        try:
+            stream = DownloadStream(url)
+            with open(path, "wb") as file:
+                for chunk in tqdm_stream(stream, desc=desc):
+                    file.write(chunk)
+        except Exception:
+            print("Something went wrong! Trying again...")
+            continue
+        break
 
 
 def _cover_download(url: str, path: str):
