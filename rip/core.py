@@ -13,7 +13,7 @@ import time
 from typing import Dict, Generator, List, Optional, Tuple, Type, Union
 
 import shutil
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from click import secho, style
@@ -584,14 +584,14 @@ class RipCore(list):
                 pl.creator = creator_match.group(1)
 
             tracks_not_found = 0
-            with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+            with ThreadPoolExecutor(max_workers=15) as executor:
                 futures = [
                     executor.submit(search_query, title, artist, pl)
                     for title, artist in queries
                 ]
                 # only for the progress bar
                 for search_attempt in tqdm(
-                    concurrent.futures.as_completed(futures),
+                    as_completed(futures),
                     unit="Tracks",
                     dynamic_ncols=True,
                     total=len(futures),
@@ -856,7 +856,7 @@ class RipCore(list):
         playlist_title = html.unescape(playlist_title_match.group(1))
 
         if remaining_tracks > 0:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+            with ThreadPoolExecutor(max_workers=15) as executor:
                 last_page = int(remaining_tracks // 50) + int(
                     remaining_tracks % 50 != 0
                 )
@@ -866,7 +866,7 @@ class RipCore(list):
                     for page in range(1, last_page + 1)
                 ]
 
-            for future in concurrent.futures.as_completed(futures):
+            for future in as_completed(futures):
                 get_titles(future.result().text)
 
         return playlist_title, info
