@@ -210,7 +210,8 @@ class TrackMetadata:
             self.albumartist = safe_get(resp, "artist", "name")
             self.label = resp.get("label")
             self.url = resp.get("link")
-            self.explicit = resp.get("parental_warning", False)
+            self.explicit = resp.get("explicit_lyrics", False)
+            self.upc = resp.get("upc")
 
             # not embedded
             self.quality = 2
@@ -257,6 +258,7 @@ class TrackMetadata:
             self.discnumber = track.get("disk_number", 1)
             self.artist = safe_get(track, "artist", "name")
             self.duration = track.get("duration", -1)
+            self.isrc = track.get("isrc")
 
         elif self.__source == "soundcloud":
             self.title = track["title"].strip()

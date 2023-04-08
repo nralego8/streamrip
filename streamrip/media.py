@@ -26,6 +26,7 @@ from typing import (
 from click import echo, secho, style
 import m3u8
 import time
+import deezer
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, ID3NoHeaderError
 from mutagen.mp4 import MP4, MP4Cover
@@ -215,9 +216,15 @@ class Track(Media):
         source = self.client.source
 
         self.resp = self.client.get(self.id, media_type="track")
-        self.meta = TrackMetadata(
-            track=self.resp, source=source
-        )  # meta dict -> TrackMetadata object
+        if (source == "deezer"):
+            album = self.client.get(self.resp["album"]["id"], media_type="album")
+            self.meta = TrackMetadata(
+                track=self.resp, album=album, source=source
+            )  # meta dict -> TrackMetadata object
+        else:
+            self.meta = TrackMetadata(
+                track=self.resp, source=source
+            )  # meta dict -> TrackMetadata object
 
         # Because the cover urls are not parsed when only the track metadata
         # is loaded, we need to do this ourselves
@@ -721,36 +728,37 @@ class Track(Media):
         id_tag = self.client.source.upper() + "ID"
         audio[id_tag] = str(self.id)
 
+        # download date
         audio["SRDATE"] = str(int(time.time()))
-
-        if (self.client.source == "qobuz"):
-            # explicit tag
+        
+        # version
+        if (hasattr(self.meta, "version") and self.meta.version != None):
+            audio["VERSION"] = str(self.meta.version)
+        else:
+            audio["VERSION"] = ""
+        
+        # explicit
+        if (hasattr(self.meta, "explicit") and self.meta.explicit != None):
             audio["EXPLICIT"] = str(self.meta.explicit)
-
-            # version
-            if (hasattr(self.meta, "version")):
-                audio["VERSION"] = str(self.meta.version)
-            else:
-                audio["VERSION"] = ""
-
-
+        
+        # original date / year
+        if (self.client.source in ["qobuz", "deezer"]):
             found_og_date = False
 
-            originaldate = get_first_release_date("isrc", self.meta.isrc)
-            if (originaldate != None):
-                audio["ORIGINALDATE"] = originaldate
-                audio["ORIGINALYEAR"] = originaldate.split("-")[0]
-                found_og_date = True
+            if (hasattr(self.meta, "isrc") and self.meta.isrc != None):
+                originaldate = get_first_release_date("isrc", self.meta.isrc)
+                if (originaldate != None):
+                    audio["ORIGINALDATE"] = originaldate
+                    audio["ORIGINALYEAR"] = originaldate.split("-")[0]
+                    found_og_date = True
 
-
-            if (found_og_date == False):
+            if (found_og_date == False and hasattr(self.meta, "upc") and self.meta.upc != None):
                 musicbrainz = get_first_release_date("upc", self.meta.upc)
                 if ("data" in musicbrainz and self.meta.discnumber in musicbrainz["data"] and self.meta.tracknumber in musicbrainz["data"][self.meta.discnumber]):
                     originaldate = musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
                     audio["ORIGINALDATE"] = originaldate
                     audio["ORIGINALYEAR"] = originaldate.split("-")[0]
                     found_og_date = True
-
 
             if(found_og_date == False):
                 title = re.sub("[\(\[].*?[\)\]]", "", self.meta.title)
@@ -762,12 +770,13 @@ class Track(Media):
                     audio["ORIGINALDATE"] = originaldate
                     audio["ORIGINALYEAR"] = originaldate.split("-")[0]
 
-
+        # upc, isrc, and label
+        if (hasattr(self.meta, "upc") and self.meta.upc != None):
             audio["UPC"] = self.meta.upc
+        if (hasattr(self.meta, "isrc") and self.meta.isrc != None):
             audio["ISRC"] = self.meta.isrc
-
-            if (hasattr(self.meta, "label")):
-                audio["LABEL"] = self.meta.label
+        if (hasattr(self.meta, "label") and self.meta.label != None):
+            audio["LABEL"] = self.meta.label
 
         if isinstance(audio, FLAC):
             if embed_cover and cover:
@@ -1992,7 +2001,24 @@ class Playlist(Tracklist, Media):
                 # TODO: This should be managed with .m3u files and alike. Arbitrary
                 # tracknumber tags might cause conflicts if the playlist files are
                 # inside of a library folder
-                meta = TrackMetadata(track=track, source=self.client.source)
+                meta = None
+                if (self.client.source == "deezer"):
+                    try:
+                        album = self.client.get(track["album"]["id"], media_type="album")
+                        for x in album["tracks"]:
+                            if x["id"] == track["id"]:
+                                track_more = x
+                                break
+                        else:
+                            track_more = self.client.get(track["id"], media_type="track")
+
+                        meta = TrackMetadata(track=track_more, album=album, source=self.client.source)
+
+                    except deezer.DeezerError:
+                        meta = TrackMetadata(track=track, source=self.client.source)
+                else:
+                    meta = TrackMetadata(track=track, source=self.client.source)
+
                 cover_url = get_cover_urls(track["album"], self.client.source)[
                     kwargs.get("embed_cover_size", "large")
                 ]
