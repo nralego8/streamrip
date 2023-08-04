@@ -1263,6 +1263,7 @@ class Tracklist(list):
     """
 
     id = None
+    type = "tracklist"
     # anything not in parentheses or brackets
     essence_regex = re.compile(r"([^\(]+)(?:\s*[\(\[][^\)][\)\]])*")
 
@@ -1297,8 +1298,16 @@ class Tracklist(list):
         with codecs.open(self.m3u_name, "w", "utf-8") as out_file:
             out_file.write("#PLAYLIST:" + self.title + "\n")
             out_file.write("#COUNT:" + str(len(self)) + "\n")
-            out_file.write("#SOURCE:" + self.client.source + "\n")
+            if (hasattr(self, "original_source")):
+                out_file.write("#SOURCE:" + self.original_source + "\n")
+            else:
+                out_file.write("#SOURCE:" + self.client.source + "\n")
+            out_file.write("#TYPE:" + str(self.type) + "\n")
+            if (hasattr(self, "creator")):
+                out_file.write("#CREATOR:" + str(self.creator) + "\n")
             out_file.write("#ID:" + str(self.id) + "\n")
+            if (hasattr(self, "link")):
+                out_file.write("#LINK:" + self.link + "\n")
             out_file.write(self.m3u8_obj.dumps())
 
     def download(self, **kwargs):
@@ -1583,6 +1592,7 @@ class Album(Tracklist, Media):
 
     downloaded_ids: set = set()
     id = None
+    type = "album"
 
     def __init__(self, client: Client, **kwargs):
         """Create a new Album object.
@@ -1895,6 +1905,7 @@ class Playlist(Tracklist, Media):
     """
 
     id = None
+    type = "playlist"
     downloaded_ids: set = set()
 
     def __init__(self, client: Client, **kwargs):
