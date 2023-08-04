@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "streamrip"
-version = "1.9.5"
+version = "1.9.7"
 description = "A fast, all-in-one music ripper for Qobuz, Deezer, Tidal, and SoundCloud"
 authors = ["nathom <nathanthomas707@gmail.com>"]
 license = "GPL-3.0-only"
@@ -43,6 +43,8 @@ aiohttp = "^3.7.4"
 cchardet = "^2.1.7"
 aiodns = "^3.0.0"
 musicbrainzngs = "^0.7.1"
+fuzzywuzzy = "^0.18.0"
+python-Levenshtein = "^0.20.9"
 
 [tool.poetry.urls]
 "Bug Reports" = "https://github.com/nathom/streamrip/issues"
