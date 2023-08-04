@@ -778,6 +778,7 @@ class Track(Media):
                     print("Album:", self.meta.album)
                     print("Artist:", self.meta.artist)
                     traceback.print_exc()
+                    exit(-1)
 
         # upc, isrc, and label
         if (hasattr(self.meta, "upc") and self.meta.upc != None):

@@ -452,6 +452,7 @@ class TrackMetadata:
             except TypeError:
                 print("Copyright re.sub issue")
                 traceback.print_exc()
+                exit(-1)
 
         logger.debug("Accessed copyright tag before setting, returning None")
         return None
