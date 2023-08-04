@@ -26,6 +26,7 @@ from typing import (
 from click import echo, secho, style
 import m3u8
 import time
+import traceback
 import deezer
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, ID3NoHeaderError
@@ -761,14 +762,22 @@ class Track(Media):
                     found_og_date = True
 
             if(found_og_date == False):
-                title = re.sub("[\(\[].*?[\)\]]", "", self.meta.title)
-                album = re.sub("[\(\[].*?[\)\]]", "", self.meta.album)
-                artist = re.sub("[\(\[].*?[\)\]]", "", self.meta.artist)
-                query = "artistname:" + artist + " AND " + "recording:" + title + " AND " + "release:" + album
-                originaldate = get_first_release_date("magic", query)
-                if (originaldate != None):
-                    audio["ORIGINALDATE"] = originaldate
-                    audio["ORIGINALYEAR"] = originaldate.split("-")[0]
+                try:
+                    title = re.sub("[\(\[].*?[\)\]]", "", self.meta.title)
+                    album = re.sub("[\(\[].*?[\)\]]", "", self.meta.album)
+                    artist = re.sub("[\(\[].*?[\)\]]", "", self.meta.artist)
+                    query = "artistname:" + artist + " AND " + "recording:" + title + " AND " + "release:" + album
+                    originaldate = get_first_release_date("magic", query)
+                    if (originaldate != None):
+                        audio["ORIGINALDATE"] = originaldate
+                        audio["ORIGINALYEAR"] = originaldate.split("-")[0]
+                except TypeError:
+                    print("Original date re.sub issue")
+                    print("ID:", self.id)
+                    print("Title:", self.meta.title)
+                    print("Album:", self.meta.album)
+                    print("Artist:", self.meta.artist)
+                    traceback.print_exc()
 
         # upc, isrc, and label
         if (hasattr(self.meta, "upc") and self.meta.upc != None):

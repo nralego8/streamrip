@@ -6,8 +6,7 @@ import logging
 import re
 from collections import OrderedDict
 from typing import Generator, Hashable, Iterable, Optional, Union
-import musicbrainzngs
-import warnings
+import traceback
 
 from .constants import (
     ALBUM_KEYS,
@@ -446,9 +445,13 @@ class TrackMetadata:
         if hasattr(self, "_copyright"):
             if self._copyright is None:
                 return None
-            copyright: str = re.sub(r"(?i)\(P\)", PHON_COPYRIGHT, self._copyright)
-            copyright = re.sub(r"(?i)\(C\)", COPYRIGHT, copyright)
-            return copyright
+            try:
+                copyright: str = re.sub(r"(?i)\(P\)", PHON_COPYRIGHT, self._copyright)
+                copyright = re.sub(r"(?i)\(C\)", COPYRIGHT, copyright)
+                return copyright
+            except TypeError:
+                print("Copyright re.sub issue")
+                traceback.print_exc()
 
         logger.debug("Accessed copyright tag before setting, returning None")
         return None
