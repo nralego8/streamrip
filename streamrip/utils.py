@@ -25,6 +25,8 @@ logger = logging.getLogger("streamrip")
 
 from mutagen.flac import FLAC 
 
+import re
+
 
 def safe_get(d: dict, *keys: Hashable, default=None):
     """Traverse dict layers safely.
@@ -565,3 +567,10 @@ def read_time_from_tag(filename):
 def read_info_from_tag(filename):
     audio = FLAC(filename)
     return audio["title"][0], audio["artist"][0], audio["album"][0]
+
+rgx_list = ["(\\s+-\\s+|\\s+\\(|\\s+\\[|\\s+)(feat|with).*", "\\s*(\\[.+\\]|\\(.+\\))\\s*", r"\s+\(\w+\)\s+"]
+def clean_text(text):
+    new_text = text
+    for rgx_match in rgx_list:
+        new_text = re.sub(rgx_match, "", new_text)
+    return new_text

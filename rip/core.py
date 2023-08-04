@@ -48,7 +48,10 @@ from streamrip.media import (
     Video,
     YoutubeVideo,
 )
-from streamrip.utils import TQDM_DEFAULT_THEME, set_progress_bar_theme, read_id_from_tag, read_info_from_tag, read_time_from_tag
+from streamrip.metadata import TrackMetadata
+from streamrip.utils import TQDM_DEFAULT_THEME, set_progress_bar_theme, read_id_from_tag, read_info_from_tag, read_time_from_tag, clean_text
+
+from streamrip.match import Matcher
 
 from . import db
 from .config import Config
@@ -176,7 +179,7 @@ class RipCore(list):
 
             raise ParsingError(message)
 
-        for source, url_type, item_id in parsed:
+        for link, source, url_type, item_id in parsed:
             if item_id in self.db:
                 secho(
                     f"ID {item_id} already downloaded, use --ignore-db to override.",
@@ -184,9 +187,9 @@ class RipCore(list):
                 )
                 continue
 
-            self.handle_item(source, url_type, item_id)
+            self.handle_item(source, url_type, item_id, link)
 
-    def handle_item(self, source: str, media_type: str, item_id: str):
+    def handle_item(self, source: str, media_type: str, item_id: str, link: str):
         """Get info and parse into a Media object.
 
         :param source:
@@ -204,6 +207,7 @@ class RipCore(list):
 
         assert media_type in MEDIA_TYPES, media_type
         item = MEDIA_CLASS[media_type](client=client, id=item_id)
+        item.link = link
         self.append(item)
 
     def _get_download_args(self) -> dict:
@@ -439,7 +443,7 @@ class RipCore(list):
 
         :raises exceptions.ParsingError:
         """
-        parsed: List[Tuple[str, str, str]] = []
+        parsed: List[Tuple[str, str, str, str]] = []
 
         interpreter_urls = QOBUZ_INTERPRETER_URL_REGEX.findall(url)
         if interpreter_urls:
@@ -449,7 +453,7 @@ class RipCore(list):
                 fg="yellow",
             )
             parsed.extend(
-                ("qobuz", "artist", extract_interpreter_url(u))
+                (u, "qobuz", "artist", extract_interpreter_url(u))
                 for u in interpreter_urls
             )
             url = QOBUZ_INTERPRETER_URL_REGEX.sub("", url)
@@ -463,7 +467,7 @@ class RipCore(list):
                 fg="yellow",
             )
             parsed.extend(
-                ("deezer", *extract_deezer_dynamic_link(url)) for url in dynamic_urls
+                (url, "deezer", *extract_deezer_dynamic_link(url)) for url in dynamic_urls
             )
 
         parsed.extend(URL_REGEX.findall(url))  # Qobuz, Tidal, Deezer
@@ -475,11 +479,11 @@ class RipCore(list):
 
             # TODO: Make this async
             soundcloud_items = (
-                soundcloud_client.resolve_url(u) for u in soundcloud_urls
+                (soundcloud_client.resolve_url(u), u) for u in soundcloud_urls
             )
 
             parsed.extend(
-                ("soundcloud", item["kind"], str(item["id"]))
+                (item[1], "soundcloud", item[0]["kind"], str(item[0]["id"]))
                 for item in soundcloud_items
             )
 
@@ -543,19 +547,39 @@ class RipCore(list):
                     query = QUERY_FORMAT[lastfm_source].format(
                         title=title, artist=artist
                     )
+
                     query_is_clean = banned_words_plain.search(query) is None
 
                     search_results = self.search(source, query, media_type="track")
-                    track = next(search_results)
+                    m = Matcher(TrackMetadata(track={"title": title, "artist": artist}, source="generic"))
+                    track = m.compare(search_results)
+                    
+                    #track = next(search_results)
 
-                    if query_is_clean:
-                        while banned_words.search(track["title"]) is not None:
-                            logger.debug("Track title banned for query=%s", query)
-                            track = next(search_results)
+                    # if query_is_clean:
+                    #     while banned_words.search(track["title"]) is not None:
+                    #         logger.debug("Track title banned for query=%s", query)
+                    #         track = next(search_results)
+
+                    # search by clean name
+                    if (track == None):
+                        alt_title = clean_text(title)
+                        alt_artist = clean_text(artist)
+                        query = QUERY_FORMAT[lastfm_source].format(
+                            title=alt_title, artist=alt_artist
+                        )
+
+                        search_results = self.search(source, query, media_type="track")
+                        m = Matcher(TrackMetadata(track={"title": alt_title, "artist": alt_artist}, source="generic"))
+                        track = m.compare(search_results)
 
                     # Because the track is searched as a single we need to set
                     # this manually
-                    track.part_of_tracklist = True
+                    if (track != None):
+                        track.part_of_tracklist = True
+                        # load full metadata before we add track
+                        if (source == "deezer"):
+                            track.load_meta()
                     return track
                 except (NoResultsFound, StopIteration):
                     return None
@@ -578,7 +602,9 @@ class RipCore(list):
             secho(f"Fetching playlist at {purl}", fg="blue")
             title, queries = self.get_lastfm_playlist(purl)
 
-            pl = Playlist(client=self.get_client(lastfm_source), name=title)
+            pl = Playlist(client=self.get_client(lastfm_source), name=title, original_source="lastfm")
+            pl.id = purl.split("/")[-1]
+            pl.link = purl
             creator_match = user_regex.search(purl)
             if creator_match is not None:
                 pl.creator = creator_match.group(1)
@@ -828,11 +854,17 @@ class RipCore(list):
             s = re.sub(r"&#\d+;", "", s)  # remove HTML entities
             # TODO: change to finditer
             return "".join(words.findall(s))
+        
+        def remove_items(test_list, item):
+            res = [i for i in test_list if i != item]
+            return res
 
         def get_titles(s):
             titles = title_tags.findall(s)[2:]
+            titles = remove_items(titles, "Play on YouTube")
+
             for i in range(0, len(titles) - 1, 2):
-                info.append((essence(titles[i]), essence(titles[i + 1])))
+                info.append((essence(titles[i]), essence(titles[i + 1]).replace(" amp ", " & ")))
 
         r = requests.get(url)
         get_titles(r.text)
@@ -858,12 +890,11 @@ class RipCore(list):
         if remaining_tracks > 0:
             with ThreadPoolExecutor(max_workers=15) as executor:
                 last_page = int(remaining_tracks // 50) + int(
-                    remaining_tracks % 50 != 0
-                )
+                    remaining_tracks % 50 != 0) + 1
 
                 futures = [
                     executor.submit(requests.get, f"{url}?page={page}")
-                    for page in range(1, last_page + 1)
+                    for page in range(2, last_page + 1)
                 ]
 
             for future in as_completed(futures):
