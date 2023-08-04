@@ -19,6 +19,9 @@ from .constants import (
     TIDAL_Q_MAP,
     TRACK_KEYS,
 )
+
+import re
+
 from .exceptions import InvalidContainerError, InvalidSourceError
 from .utils import get_cover_urls, get_quality_id, safe_get
 
@@ -161,7 +164,9 @@ class TrackMetadata:
             self.upc = resp.get("upc")
 
             # Non-embedded information
-            self.version = resp.get("version")
+            self.version = resp.get("version", None)
+            if self.version == None:
+                self.version = self.custom_version()
             self.cover_urls = get_cover_urls(resp, self.__source)
             self.streamable = resp.get("streamable", False)
             self.bit_depth = resp.get("maximum_bit_depth")
@@ -223,9 +228,28 @@ class TrackMetadata:
             self.id = resp.get("id")
 
         elif self.__source == "soundcloud":
-            raise NotImplementedError
+            raise NotImplementedError    
+        elif self.__source == "generic":
+            return
         else:
             raise InvalidSourceError(self.__source)
+        
+    def custom_version(self):
+        if(self.title != None):
+            title = self.title.lower()
+            self.implicit_version = True
+            if ("karaoke" in title):
+                return "Karaoke"
+            if (re.search(r"(\(|\s+-\s+)(live.*)\)?", title)):
+                return "Live"
+            if (re.search(r"(\(|\s+-\s+)(acoustic)\)?", title)):
+                return "Acoustic"
+            if (re.search(r"(\(|\s+-\s+)(demo)\)?", title)):
+                return "Demo"
+            if (re.search(r"(\(|\s+-\s+)(.*remix)\)?", title)):
+                return "Remix"
+        
+        return None
 
     def add_track_meta(self, track: dict):
         """Parse the metadata from a track dict returned by an API.
@@ -259,6 +283,7 @@ class TrackMetadata:
             self.artist = safe_get(track, "artist", "name")
             self.duration = track.get("duration", -1)
             self.isrc = track.get("isrc")
+            self.version = self.custom_version()
 
         elif self.__source == "soundcloud":
             self.title = track["title"].strip()
@@ -273,7 +298,12 @@ class TrackMetadata:
             self.tracktotal = 0
             self.quality = 0
             self.cover_urls = get_cover_urls(track, "soundcloud")
-
+        elif self.__source == "generic":
+            self.title = track.get("title", None)
+            self.artist = track.get("artist", None)
+            self.album = track.get("album", None)
+            self.explicit = track.get("explicit", False)
+            self.version = track.get("version", self.custom_version())
         else:
             raise ValueError(self.__source)
 
@@ -324,7 +354,8 @@ class TrackMetadata:
 
         album = self._album
 
-        if self.get("version") and self["version"] not in album:
+        if self.get("version") and self["version"] not in album and \
+            (self.get("implicit_version") == None or self.implicit_version == False):
             album = f"{self._album} ({self.version})"
 
         if self.get("work") and self["work"] not in album:
