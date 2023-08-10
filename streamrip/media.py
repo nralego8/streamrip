@@ -542,7 +542,7 @@ class Track(Media):
 
     def check_track(self):
         if os.path.isfile(self.final_path):
-            if (self.final_path.endswithendswith(".flac")):
+            if (self.final_path.endswith(".flac")):
                 try:
                     audio = FLAC(self.final_path)
                     if (self.meta.sampling_rate > audio.info.sample_rate):
