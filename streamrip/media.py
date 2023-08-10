@@ -325,7 +325,10 @@ class Track(Media):
             dl_info = self.client.get_file_url(url_id, self.quality)
         except Exception as e:
             logger.debug(repr(e))
-            raise NonStreamable(e)
+            message = e.message
+            if (message == None):
+                message = repr(e)
+            raise NonStreamable(message)
 
         if self.client.source == "qobuz":
             if not self.__validate_qobuz_dl_info(dl_info):
