@@ -374,11 +374,13 @@ class Track(Media):
             stream_size = len(stream)
             stream_quality = dl_info["size_to_quality"][stream_size]
             if self.quality != stream_quality:
+                raise NonStreamable("Desired quality is not available")
                 # The chosen quality is not available
-                self.quality = stream_quality
-                self.format_final_path(
-                    restrict=kwargs.get("restrict_filenames", False)
-                )  # If the extension is different
+                # self.quality = stream_quality
+                # self.format_final_path(
+                #     restrict=kwargs.get("restrict_filenames", False)
+                # )  
+                # If the extension is different
 
             with open(self.path, "wb") as file:
                 for chunk in tqdm_stream(stream, desc=self._progress_desc):
@@ -540,15 +542,17 @@ class Track(Media):
 
     def check_track(self):
         if os.path.isfile(self.final_path):
-            try:
-                audio = FLAC(self.final_path)
-                if (self.meta.sampling_rate > audio.info.sample_rate):
+            if (self.final_path.endswithendswith(".flac")):
+                try:
+                    audio = FLAC(self.final_path)
+                    if (self.meta.sampling_rate > audio.info.sample_rate):
+                        return
+                    elif (self.meta.bit_depth > audio.info.bits_per_sample):
+                        return
+                except Exception as e:
+                    logger.debug(type(e))
+                    # if we can't open the existing file, assume it is it lower res
                     return
-                elif (self.meta.bit_depth > audio.info.bits_per_sample):
-                    return
-            except:
-                # if we can't open the existing file, assume it is it lower res
-                return
             
             self.downloaded = True
             self.tagged = True
@@ -580,6 +584,8 @@ class Track(Media):
             self.check_track()
 
         self.format_helper(self.parent_folder, self.folder, filename, restrict)
+    
+        logger.debug("File found in %s", self.parent_folder)
 
         logger.debug("Formatted path: %s", self.final_path)
 
@@ -714,6 +720,7 @@ class Track(Media):
             logger.debug("Setting %s tag to %s", k, v)
             audio[k] = v
 
+        logger.debug("Done with initial tags!")
         if embed_cover and cover is None:
             cover = (
                 Tracklist.get_cover_obj(
@@ -725,68 +732,69 @@ class Track(Media):
 
         # nralego8's extended tags
 
-        # id tag (og client id)
-        id_tag = self.client.source.upper() + "ID"
-        audio[id_tag] = str(self.id)
+        if (self.container == "FLAC"):
+            # id tag (og client id)
+            id_tag = self.client.source.upper() + "ID"
+            audio[id_tag] = str(self.id)
 
-        # download date
-        audio["SRDATE"] = str(int(time.time()))
-        
-        # version
-        if (hasattr(self.meta, "version") and self.meta.version != None):
-            audio["VERSION"] = str(self.meta.version)
-        else:
-            audio["VERSION"] = ""
-        
-        # explicit
-        if (hasattr(self.meta, "explicit") and self.meta.explicit != None):
-            audio["EXPLICIT"] = str(self.meta.explicit)
-        
-        # original date / year
-        if (self.client.source in ["qobuz", "deezer"]):
-            found_og_date = False
+            # download date
+            audio["SRDATE"] = str(int(time.time()))
+            
+            # version
+            if (hasattr(self.meta, "version") and self.meta.version != None):
+                audio["VERSION"] = str(self.meta.version)
+            else:
+                audio["VERSION"] = ""
+            
+            # explicit
+            if (hasattr(self.meta, "explicit") and self.meta.explicit != None):
+                audio["EXPLICIT"] = str(self.meta.explicit)
+            
+            # original date / year
+            if (self.client.source in ["qobuz", "deezer"]):
+                found_og_date = False
 
-            if (hasattr(self.meta, "isrc") and self.meta.isrc != None):
-                originaldate = get_first_release_date("isrc", self.meta.isrc)
-                if (originaldate != None):
-                    audio["ORIGINALDATE"] = originaldate
-                    audio["ORIGINALYEAR"] = originaldate.split("-")[0]
-                    found_og_date = True
-
-            if (found_og_date == False and hasattr(self.meta, "upc") and self.meta.upc != None):
-                musicbrainz = get_first_release_date("upc", self.meta.upc)
-                if ("data" in musicbrainz and self.meta.discnumber in musicbrainz["data"] and self.meta.tracknumber in musicbrainz["data"][self.meta.discnumber]):
-                    originaldate = musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
-                    audio["ORIGINALDATE"] = originaldate
-                    audio["ORIGINALYEAR"] = originaldate.split("-")[0]
-                    found_og_date = True
-
-            if(found_og_date == False):
-                try:
-                    title = re.sub("[\(\[].*?[\)\]]", "", self.meta.title)
-                    album = re.sub("[\(\[].*?[\)\]]", "", self.meta.album)
-                    artist = re.sub("[\(\[].*?[\)\]]", "", self.meta.artist)
-                    query = "artistname:" + artist + " AND " + "recording:" + title + " AND " + "release:" + album
-                    originaldate = get_first_release_date("magic", query)
+                if (hasattr(self.meta, "isrc") and self.meta.isrc != None):
+                    originaldate = get_first_release_date("isrc", self.meta.isrc)
                     if (originaldate != None):
                         audio["ORIGINALDATE"] = originaldate
                         audio["ORIGINALYEAR"] = originaldate.split("-")[0]
-                except TypeError:
-                    print("Original date re.sub issue")
-                    print("ID:", self.id)
-                    print("Title:", self.meta.title)
-                    print("Album:", self.meta.album)
-                    print("Artist:", self.meta.artist)
-                    traceback.print_exc()
-                    exit(-1)
+                        found_og_date = True
 
-        # upc, isrc, and label
-        if (hasattr(self.meta, "upc") and self.meta.upc != None):
-            audio["UPC"] = self.meta.upc
-        if (hasattr(self.meta, "isrc") and self.meta.isrc != None):
-            audio["ISRC"] = self.meta.isrc
-        if (hasattr(self.meta, "label") and self.meta.label != None):
-            audio["LABEL"] = self.meta.label
+                if (found_og_date == False and hasattr(self.meta, "upc") and self.meta.upc != None):
+                    musicbrainz = get_first_release_date("upc", self.meta.upc)
+                    if ("data" in musicbrainz and self.meta.discnumber in musicbrainz["data"] and self.meta.tracknumber in musicbrainz["data"][self.meta.discnumber]):
+                        originaldate = musicbrainz["data"][self.meta.discnumber][self.meta.tracknumber]
+                        audio["ORIGINALDATE"] = originaldate
+                        audio["ORIGINALYEAR"] = originaldate.split("-")[0]
+                        found_og_date = True
+
+                if(found_og_date == False):
+                    try:
+                        title = re.sub("[\(\[].*?[\)\]]", "", self.meta.title)
+                        album = re.sub("[\(\[].*?[\)\]]", "", self.meta.album)
+                        artist = re.sub("[\(\[].*?[\)\]]", "", self.meta.artist)
+                        query = "artistname:" + artist + " AND " + "recording:" + title + " AND " + "release:" + album
+                        originaldate = get_first_release_date("magic", query)
+                        if (originaldate != None):
+                            audio["ORIGINALDATE"] = originaldate
+                            audio["ORIGINALYEAR"] = originaldate.split("-")[0]
+                    except TypeError:
+                        print("Original date re.sub issue")
+                        print("ID:", self.id)
+                        print("Title:", self.meta.title)
+                        print("Album:", self.meta.album)
+                        print("Artist:", self.meta.artist)
+                        traceback.print_exc()
+                        exit(-1)
+
+            # upc, isrc, and label
+            if (hasattr(self.meta, "upc") and self.meta.upc != None):
+                audio["UPC"] = self.meta.upc
+            if (hasattr(self.meta, "isrc") and self.meta.isrc != None):
+                audio["ISRC"] = self.meta.isrc
+            if (hasattr(self.meta, "label") and self.meta.label != None):
+                audio["LABEL"] = self.meta.label
 
         if isinstance(audio, FLAC):
             if embed_cover and cover:
