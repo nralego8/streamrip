@@ -190,7 +190,7 @@ class TrackMetadata:
                 self.albumartist = safe_get(resp, "artist", "name")
 
             self.disctotal = resp.get("numberOfVolumes", 1)
-            self.isrc = resp.get("isrc")
+            self.upc = resp.get("upc")
             # label not returned by API
 
             # non-embedded
@@ -272,6 +272,7 @@ class TrackMetadata:
             self.tracknumber = track.get("trackNumber", 1)
             self.discnumber = track.get("volumeNumber", 1)
             self.artist = track.get("artist", {}).get("name")
+            self.isrc = track.get("isrc")
             self._get_tidal_quality(track["audioQuality"])
 
         elif self.__source == "deezer":
