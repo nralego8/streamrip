@@ -734,7 +734,6 @@ class Track(Media):
             )
 
         # nralego8's extended tags
-
         if (self.container == "FLAC"):
             # id tag (og client id)
             id_tag = self.client.source.upper() + "ID"
@@ -754,7 +753,7 @@ class Track(Media):
                 audio["EXPLICIT"] = str(self.meta.explicit)
             
             # original date / year
-            if (self.client.source in ["qobuz", "deezer"]):
+            if (self.client.source in ["qobuz", "deezer", "tidal"]):
                 found_og_date = False
 
                 if (hasattr(self.meta, "isrc") and self.meta.isrc != None):
