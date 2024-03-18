@@ -273,6 +273,7 @@ class TrackMetadata:
             self.discnumber = track.get("volumeNumber", 1)
             self.artist = track.get("artist", {}).get("name")
             self.isrc = track.get("isrc")
+            self.duration = track.get("duration", -1)
             self._get_tidal_quality(track["audioQuality"])
 
         elif self.__source == "deezer":
@@ -509,7 +510,10 @@ class TrackMetadata:
         formatter = {k: self.get(k) for k in ALBUM_KEYS}
         formatter["album"] = self.album
         formatter["container"] = "FLAC" if max_quality >= 2 else "MP3"
-        formatter["sampling_rate"] /= 1000
+        if (formatter["sampling_rate"] != None):
+            formatter["sampling_rate"] /= 1000
+        else:
+            formatter["sampling_rate"] = 44.1
         return formatter
 
     def tags(self, container: str = "flac", exclude: Optional[set] = None) -> Generator:

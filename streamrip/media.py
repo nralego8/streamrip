@@ -217,7 +217,7 @@ class Track(Media):
         source = self.client.source
 
         self.resp = self.client.get(self.id, media_type="track")
-        if (source == "deezer"):
+        if (source == "deezer" or source == "tidal"):
             album = self.client.get(self.resp["album"]["id"], media_type="album")
             self.meta = TrackMetadata(
                 track=self.resp, album=album, source=source
@@ -2033,6 +2033,7 @@ class Playlist(Tracklist, Media):
                 # tracknumber tags might cause conflicts if the playlist files are
                 # inside of a library folder
                 meta = None
+                print(track)
                 if (self.client.source == "deezer"):
                     try:
                         album = self.client.get(track["album"]["id"], media_type="album")
@@ -2047,6 +2048,9 @@ class Playlist(Tracklist, Media):
 
                     except deezer.DeezerError:
                         meta = TrackMetadata(track=track, source=self.client.source)
+                elif (self.client.source == "tidal"):
+                    album = self.client.get(track["album"]["id"], media_type="album")
+                    meta = TrackMetadata(track=track, album=album, source=self.client.source)
                 else:
                     meta = TrackMetadata(track=track, source=self.client.source)
 
