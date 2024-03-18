@@ -2033,7 +2033,6 @@ class Playlist(Tracklist, Media):
                 # tracknumber tags might cause conflicts if the playlist files are
                 # inside of a library folder
                 meta = None
-                print(track)
                 if (self.client.source == "deezer"):
                     try:
                         album = self.client.get(track["album"]["id"], media_type="album")
