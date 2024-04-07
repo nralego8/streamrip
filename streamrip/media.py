@@ -521,7 +521,7 @@ class Track(Media):
 
         :rtype: str
         """
-        return style(f"Track {self.meta.tracknumber:02}", fg="blue")
+        return style(f"{self.meta.title} - {self.meta.albumartist}", fg="blue")
 
     def download_cover(self, width=999999, height=999999):
         """Download the cover art, if cover_url is given."""
