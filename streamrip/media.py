@@ -521,7 +521,16 @@ class Track(Media):
 
         :rtype: str
         """
-        return style(f"{self.meta.title} - {self.meta.albumartist}", fg="blue")
+        offset = 23
+        extra = "..."
+        def fix_string(string):
+            if (len(string) < offset):
+                return string.ljust(offset, " ")
+            return string[0:offset-len(extra)] + extra
+
+        artist = fix_string(self.meta.albumartist)
+        title = fix_string(self.meta.title)
+        return style(f"{artist} - {title}", fg="blue")
 
     def download_cover(self, width=999999, height=999999):
         """Download the cover art, if cover_url is given."""
