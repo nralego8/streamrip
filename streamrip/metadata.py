@@ -168,8 +168,9 @@ class TrackMetadata:
                 self.version = self.custom_version()
             self.cover_urls = get_cover_urls(resp, self.__source)
             self.streamable = resp.get("streamable", False)
-            self.bit_depth = resp.get("maximum_bit_depth")
-            self.sampling_rate = resp.get("maximum_sampling_rate")
+            # get bit depth and sample rate from track not album
+            # self.bit_depth = resp.get("maximum_bit_depth")
+            # self.sampling_rate = resp.get("maximum_sampling_rate")
             self.quality = get_quality_id(self.bit_depth, self.sampling_rate)
             self.booklets = resp.get("goodies")
 
@@ -265,6 +266,8 @@ class TrackMetadata:
             self.artist = safe_get(track, "performer", "name")
             self.duration = track.get("duration", -1)
             self.isrc = track.get("isrc")
+            self.bit_depth = track.get("maximum_bit_depth")
+            self.sampling_rate = track.get("maximum_sampling_rate")
 
         elif self.__source == "tidal":
             self.title = track["title"].strip()

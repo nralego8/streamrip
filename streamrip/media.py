@@ -558,18 +558,16 @@ class Track(Media):
                 try:
                     audio = FLAC(self.final_path)
                     if (self.meta.sampling_rate > audio.info.sample_rate):
+                        logger.debug("Incoming sample rate %d for %s is greater than existing %d", self.meta.sampling_rate, self.final_path, audio.info.sample_rate)
                         return
                     elif (self.meta.bit_depth > audio.info.bits_per_sample):
+                        logger.debug("Incoming bit depth %d for %s is greater than existing %d", self.meta.bit_depth, self.final_path, audio.info.bits_per_sample)
                         return
                 except Exception as e:
+                    logger.debug("Cannot open file %s so assume lower res", self.final_path)
                     logger.debug(type(e))
                     # if we can't open the existing file, assume it is it lower res
                     return
-            
-            self.downloaded = True
-            self.tagged = True
-            self.path = self.final_path
-            raise ItemExists(self.final_path)
 
     def format_final_path(self, restrict: bool = False) -> str:
         """Return the final filepath of the downloaded file.
