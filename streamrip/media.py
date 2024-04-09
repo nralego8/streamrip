@@ -568,6 +568,11 @@ class Track(Media):
                     logger.debug(type(e))
                     # if we can't open the existing file, assume it is it lower res
                     return
+                        
+            self.downloaded = True
+            self.tagged = True
+            self.path = self.final_path
+            raise ItemExists(self.final_path)
 
     def format_final_path(self, restrict: bool = False) -> str:
         """Return the final filepath of the downloaded file.
