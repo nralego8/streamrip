@@ -275,15 +275,6 @@ class Track(Media):
 
         os.makedirs(self.folder, exist_ok=True)
 
-        if hasattr(self, "cover_url"):
-            try:
-                self.download_cover(
-                    width=kwargs.get("max_artwork_width", 999999),
-                    height=kwargs.get("max_artwork_height", 999999),
-                )  # only downloads for playlists and singles
-            except ItemExists as e:
-                logger.debug(e)
-
         self.path = os.path.join(gettempdir(), f"{hash(self.id)}_{self.quality}.tmp")
 
     def download(  # noqa
@@ -333,9 +324,32 @@ class Track(Media):
         if self.client.source == "qobuz":
             if not self.__validate_qobuz_dl_info(dl_info):
                 raise NonStreamable("Track is not available for download")
+            
+            # occassionally sample rate we can download doesn't match what we get from the API
+            if (dl_info.get("sampling_rate") != self.meta.sampling_rate or dl_info.get("bit_depth") != self.meta.bit_depth):
+                logger.debug("Download quality mismatch, checking to see if we already have the right quality...")
+                self.meta.bit_depth = dl_info.get("bit_depth")
+                self.meta.sampling_rate = dl_info.get("sampling_rate")
+                try:
+                    self.format_final_path(
+                        restrict=kwargs.get("restrict_filenames", False)
+                    )  # raises: ItemExists
+                except ItemExists as e:
+                    return
+                logger.debug("Don't have quality already, so we should download!")
 
             self.sampling_rate = dl_info.get("sampling_rate")
             self.bit_depth = dl_info.get("bit_depth")
+
+        # --------- Download Cover ----------
+        if hasattr(self, "cover_url"):
+            try:
+                self.download_cover(
+                    width=kwargs.get("max_artwork_width", 999999),
+                    height=kwargs.get("max_artwork_height", 999999),
+                )  # only downloads for playlists and singles
+            except ItemExists as e:
+                logger.debug(e)
 
         # --------- Download Track ----------
         if self.client.source in ("qobuz", "tidal"):
@@ -568,7 +582,7 @@ class Track(Media):
                     logger.debug(type(e))
                     # if we can't open the existing file, assume it is it lower res
                     return
-                        
+
             self.downloaded = True
             self.tagged = True
             self.path = self.final_path
