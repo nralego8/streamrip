@@ -171,7 +171,7 @@ class TrackMetadata:
             # get bit depth and sample rate from track not album
             # self.bit_depth = resp.get("maximum_bit_depth")
             # self.sampling_rate = resp.get("maximum_sampling_rate")
-            self.quality = get_quality_id(self.bit_depth, self.sampling_rate)
+            # self.quality = get_quality_id(self.bit_depth, self.sampling_rate)
             self.booklets = resp.get("goodies")
 
             if self.sampling_rate is not None:
@@ -268,6 +268,7 @@ class TrackMetadata:
             self.isrc = track.get("isrc")
             self.bit_depth = track.get("maximum_bit_depth")
             self.sampling_rate = track.get("maximum_sampling_rate")
+            self.quality = get_quality_id(self.bit_depth, self.sampling_rate)
 
         elif self.__source == "tidal":
             self.title = track["title"].strip()

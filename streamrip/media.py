@@ -801,7 +801,12 @@ class Track(Media):
                     try:
                         title = re.sub("[\(\[].*?[\)\]]", "", self.meta.title)
                         album = re.sub("[\(\[].*?[\)\]]", "", self.meta.album)
-                        artist = re.sub("[\(\[].*?[\)\]]", "", self.meta.artist)
+                        if (self.meta.artist != None):
+                            artist = re.sub("[\(\[].*?[\)\]]", "", self.meta.artist)
+                        elif (self.meta.albumartist != None):
+                            artist = re.sub("[\(\[].*?[\)\]]", "", self.meta.albumartist)
+                        else:
+                            artist = ""
                         query = "artistname:" + artist + " AND " + "recording:" + title + " AND " + "release:" + album
                         originaldate = get_first_release_date("magic", query)
                         if (originaldate != None):
@@ -1335,6 +1340,11 @@ class Tracklist(list):
         segment = m3u8.Segment(track, duration=meta.duration, title=meta.title.replace(",", ""))
         self.m3u8_obj.add_segment(segment)
 
+    def recover_link(self, title, description):
+        if (title.endswith(" - from Apple Music")):
+            return "https://music.apple.com/us/playlist/" + description.strip()
+        return ""
+
     def save_m3u8(self):
         if(isinstance(self, Album) and len(self.m3u8_obj.segments) <= 1):
             return
@@ -1354,6 +1364,9 @@ class Tracklist(list):
             out_file.write("#ID:" + str(self.id) + "\n")
             if (hasattr(self, "link")):
                 out_file.write("#LINK:" + self.link + "\n")
+            if (self.meta.get("description") != None and " - from " in self.title):
+                og_link = self.recover_link(self.title, self.meta["description"])
+                out_file.write("#OG_LINK:" + og_link + "\n")
             out_file.write(self.m3u8_obj.dumps())
 
     def download(self, **kwargs):
@@ -1696,7 +1709,12 @@ class Album(Tracklist, Media):
             return Playlist.from_api(resp, client)
 
         info = cls._parse_get_resp(resp, client)
-        return cls(client, **info.asdict())
+        album = cls(client, **info.asdict())
+        if (album.bit_depth == None):
+            album.bit_depth = resp.get("maximum_bit_depth")
+        if (album.sampling_rate == None):
+            album.sampling_rate = resp.get("maximum_sampling_rate")
+        return album
 
     def _prepare_m3u8(self):
         playlist_folder = os.path.join(self.parent_folder, "../-=Playlists=-/-=Streamrip=-/Albums")
